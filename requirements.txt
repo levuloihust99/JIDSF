@@ -1,0 +1,16 @@
+torch
+transformers
+pandas
+numpy
+joblib
+scikit-learn
+tqdm
+sadice
+nltk
+seqeval
+pytorch-crf
+vncorenlp
+unidecode
+PyYAML
+sentencepiece
+jsonlines
