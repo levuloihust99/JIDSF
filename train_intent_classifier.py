@@ -22,6 +22,7 @@ from transformers import (
 from transformers import AdamW
 from transformers import get_linear_schedule_with_warmup
 
+from utils.utils import setup_random
 from utils.logging_utils import add_color_formatter
 
 logging.basicConfig(level=logging.INFO)
@@ -517,6 +518,9 @@ class IntentClassifierTrainer:
                 json.dump(cfg.__dict__, writer, indent=4, ensure_ascii=False)
 
 def main():
+    # setup randomness
+    setup_random(cfg.seed)
+
     train_data, dev_data, tag2int, int2tag = load_data()
     tokenizer = load_tokenizer()
     train_data_loader = create_dataloader(
