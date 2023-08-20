@@ -42,6 +42,9 @@ class NERTrainer(object):
             self.device = torch.device("cuda:{}".format(config.gpu_id))
             logger.info('There are %d GPU(s) available.' % torch.cuda.device_count())
             logger.info('We will use the GPU:{}, {}'.format(torch.cuda.get_device_name(config.gpu_id), torch.cuda.get_device_capability(config.gpu_id)))
+        elif torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+            logger.info("MPS backend is available, using MPS.")
         else:
             logger.info('No GPU available, using the CPU instead.')
             self.device = torch.device("cpu")
