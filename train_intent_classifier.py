@@ -200,6 +200,7 @@ class IntentClassifierTrainer:
         else:
             logger.info('No GPU available, using the CPU instead.')
             self.device = torch.device("cpu")
+        self.model.to(self.device)
     
 
     def train(self):
