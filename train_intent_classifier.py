@@ -215,7 +215,6 @@ class IntentClassifierTrainer:
 
                 progress_bar.update(1)
                 progress_bar.set_postfix({"Loss": float(batch_loss)})
-                break
 
             avg_train_loss = total_loss / len(self.train_data_loader)
             logger.info("Average training loss: {0:.5f}".format(avg_train_loss))
