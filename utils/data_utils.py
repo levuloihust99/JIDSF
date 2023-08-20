@@ -1,8 +1,12 @@
 import re
+import json
+import requests
 
 import unidecode
 import copy
 import jsonlines
+
+from typing import Text, List
 
 
 def taggedseq2doccano(sentences):
@@ -237,3 +241,16 @@ def segment_word(sentences, segmenter, error_tracker=None):
         res_sentences.append(res_sentence)
 
     return res_sentences
+
+
+class WordSegmenter:
+    def __init__(self, segment_endpoint):
+        self.segment_endpoint = segment_endpoint
+
+    def tokenize(self, text: Text) -> List[Text]:
+        return [self.segment(text).split()]
+
+    def segment(self, text: Text) -> Text:
+        headers = {"Content-Type": "application"}
+        response = requests.post(self.segment_endpoint, headers=headers, data=json.dumps({"sentence": text}))
+        return response.json()["sentence"]

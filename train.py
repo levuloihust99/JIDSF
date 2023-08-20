@@ -10,11 +10,11 @@ from utils.training_utils import (
     create_optimizer_and_scheduler
 )
 from utils.utils import setup_random
-from utils.logging_utils import add_color_formater
+from utils.logging_utils import add_color_formatter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-add_color_formater(logging.root)
+add_color_formatter(logging.root)
 
 
 def main():
