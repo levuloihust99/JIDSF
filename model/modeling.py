@@ -1,10 +1,11 @@
 import torch
 from torch import nn
 from transformers import (
-    RobertaForTokenClassification, BertPreTrainedModel,
-    BertModel, ElectraPreTrainedModel,
-    ElectraModel, RobertaModel, XLMRobertaForTokenClassification,
-    DistilBertPreTrainedModel, DistilBertModel
+    RobertaModel, RobertaPreTrainedModel,
+    BertModel, BertPreTrainedModel, 
+    ElectraModel, ElectraPreTrainedModel,
+    XLMRobertaModel, XLMRobertaPreTrainedModel,
+    DistilBertModel, DistilBertPreTrainedModel
 )
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.modeling_outputs import TokenClassifierOutput
@@ -15,16 +16,18 @@ from sadice import SelfAdjDiceLoss
 class BertPosTagger(BertPreTrainedModel):
     def __init__(self, config, args):
         super(BertPosTagger, self).__init__(config)
-        self.bert = BertModel(config)
-        self.num_labels = config.num_labels
+
         self.args = args
-        self.dropout = nn.Dropout(self.args.dropout_prob)
+        self.store_dict = args.__dict__
+
+        self.num_labels = config.num_labels
+        self.bert = BertModel(config, add_pooling_layer=False)
+        self.dropout = nn.Dropout(args.dropout_prob)
+
         if args.pool_type == 'concat':
-            self.fc = nn.Linear(int(self.args.num_hidden_layer) * config.hidden_size, self.num_labels)
+            self.fc = nn.Linear(int(args.num_hidden_layer) * config.hidden_size, self.num_labels)
         else:
             self.fc = nn.Linear(config.hidden_size, self.num_labels)
-
-        self.store_dict = args.__dict__
 
         if self.args.use_crf:
             self.crf = CRF(num_tags=self.num_labels, batch_first=True)
@@ -42,8 +45,9 @@ class BertPosTagger(BertPreTrainedModel):
         labels=None,
         return_dict=None
     ):
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.bert(input_ids,
+        bert_outputs = self.bert(input_ids,
                             attention_mask=attention_mask,
                             token_type_ids=token_type_ids,
                             position_ids=position_ids,
@@ -52,10 +56,12 @@ class BertPosTagger(BertPreTrainedModel):
                             return_dict=True)
 
         if self.args.pool_type == "concat":
-            outputs = torch.cat(outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=-1)
+            sequence_output = torch.cat(
+                bert_outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=-1)
         else:
-            outputs = torch.mean(torch.stack(outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=0), dim=0)
-        embedded = self.dropout(outputs)
+            sequence_output = torch.mean(
+                torch.stack(bert_outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=0), dim=0)
+        embedded = self.dropout(sequence_output)
         logits = self.fc(embedded)
 
         outputs = (logits,)
@@ -63,9 +69,9 @@ class BertPosTagger(BertPreTrainedModel):
         loss = None
         if labels is not None:
             if self.args.use_crf:
-                slot_loss = self.crf(logits, labels, mask=attention_mask.byte(), reduction='mean')
-                slot_loss = -1 * slot_loss  # negative log-likelihood
-                outputs = (slot_loss,) + outputs
+                loss = self.crf(logits, labels, mask=attention_mask.byte(), reduction='mean')
+                loss = -1 * loss  # negative log-likelihood
+                outputs = (loss,) + outputs
             else:
                 loss_fct = CrossEntropyLoss(ignore_index=self.args.ignore_index)
                 loss_unbalance = SelfAdjDiceLoss(reduction="mean")
@@ -83,22 +89,31 @@ class BertPosTagger(BertPreTrainedModel):
                         loss += loss_unbalance(logits.view(-1, self.num_labels), labels.view(-1))
                 outputs = (loss,) + outputs
 
+        if return_dict:
+            return TokenClassifierOutput(
+                loss=loss,
+                logits=logits,
+                hidden_states=bert_outputs.hidden_states,
+                attentions=bert_outputs.attentions
+            )
         return outputs  # (loss), logits, (hidden_states), (attentions)
 
 
 class DistilBertPosTagger(DistilBertPreTrainedModel):
     def __init__(self, config, args):
         super(DistilBertPosTagger, self).__init__(config)
-        self.num_labels = config.num_labels
+
         self.args = args
+        self.store_dict = args.__dict__
+
+        self.num_labels = config.num_labels
         self.distilbert = DistilBertModel(config)
-        self.dropout = nn.Dropout(config.dropout)
+        self.dropout = nn.Dropout(args.dropout_prob)
+
         if args.pool_type == 'concat':
-            self.fc = nn.Linear(int(self.args.num_hidden_layer) * config.hidden_size, self.num_labels)
+            self.fc = nn.Linear(int(args.num_hidden_layer) * config.hidden_size, self.num_labels)
         else:
             self.fc = nn.Linear(config.hidden_size, self.num_labels)
-
-        self.store_dict = args.__dict__
 
         if self.args.use_crf:
             self.crf = CRF(num_tags=self.num_labels, batch_first=True)
@@ -116,7 +131,9 @@ class DistilBertPosTagger(DistilBertPreTrainedModel):
         output_hidden_states=None,
         return_dict=None,
     ):
-        outputs = self.distilbert(
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        distil_outputs = self.distilbert(
             input_ids,
             attention_mask=attention_mask,
             head_mask=head_mask,
@@ -127,10 +144,12 @@ class DistilBertPosTagger(DistilBertPreTrainedModel):
         )
 
         if self.args.pool_type == "concat":
-            outputs = torch.cat(outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=-1)
+            sequence_output = torch.cat(
+                distil_outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=-1)
         else:
-            outputs = torch.mean(torch.stack(outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=0), dim=0)
-        embedded = self.dropout(outputs)
+            sequence_output = torch.mean(
+                torch.stack(distil_outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=0), dim=0)
+        embedded = self.dropout(sequence_output)
         logits = self.fc(embedded)
 
         outputs = (logits,)
@@ -138,9 +157,9 @@ class DistilBertPosTagger(DistilBertPreTrainedModel):
         loss = None
         if labels is not None:
             if self.args.use_crf:
-                slot_loss = self.crf(logits, labels, mask=attention_mask.byte(), reduction='mean')
-                slot_loss = -1 * slot_loss  # negative log-likelihood
-                outputs = (slot_loss,) + outputs
+                loss = self.crf(logits, labels, mask=attention_mask.byte(), reduction='mean')
+                loss = -1 * loss  # negative log-likelihood
+                outputs = (loss,) + outputs
             else:
                 loss_fct = CrossEntropyLoss(ignore_index=self.args.ignore_index)
                 loss_unbalance = SelfAdjDiceLoss(reduction="mean")
@@ -158,19 +177,29 @@ class DistilBertPosTagger(DistilBertPreTrainedModel):
                         loss += loss_unbalance(logits.view(-1, self.num_labels), labels.view(-1))
                 outputs = (loss,) + outputs
 
+        if return_dict:
+            return TokenClassifierOutput(
+                loss=loss,
+                logits=logits,
+                hidden_states=distil_outputs.hidden_states,
+                attentions=distil_outputs.attentions
+            )
         return outputs  # (loss), logits, (hidden_states), (attentions)
 
 
 class BertPosTaggerElectra(ElectraPreTrainedModel):
     def __init__(self, config, args):
         super(BertPosTaggerElectra, self).__init__(config)
-        self.electra = ElectraModel(config)
-        self.num_labels = config.num_labels
+
         self.args = args
         self.store_dict = args.__dict__
-        self.dropout = nn.Dropout(self.args.dropout_prob)
+
+        self.num_labels = config.num_labels
+        self.electra = ElectraModel(config)
+        self.dropout = nn.Dropout(args.dropout_prob)
+
         if args.pool_type == 'concat':
-            self.fc = nn.Linear(int(self.args.num_hidden_layer) * config.hidden_size, self.num_labels)
+            self.fc = nn.Linear(int(args.num_hidden_layer) * config.hidden_size, self.num_labels)
         else:
             self.fc = nn.Linear(config.hidden_size, self.num_labels)
 
@@ -179,10 +208,20 @@ class BertPosTaggerElectra(ElectraPreTrainedModel):
 
         self.init_weights()
 
-    def forward(self, input_ids=None, attention_mask=None, token_type_ids=None,
-                position_ids=None, head_mask=None, inputs_embeds=None, labels=None):
+    def forward(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        return_dict=None
+    ):
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.electra(input_ids,
+        electra_outputs = self.electra(input_ids,
                                attention_mask=attention_mask,
                                token_type_ids=token_type_ids,
                                position_ids=position_ids,
@@ -191,11 +230,13 @@ class BertPosTaggerElectra(ElectraPreTrainedModel):
                                return_dict=True)
 
         if self.args.pool_type == "concat":
-            outputs = torch.cat(outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=-1)
+            sequence_output = torch.cat(
+                electra_outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=-1)
         else:
-            outputs = torch.mean(torch.stack(outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=0), dim=0)
+            sequence_output = torch.mean(
+                torch.stack(electra_outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=0), dim=0)
 
-        embedded = self.dropout(outputs)
+        embedded = self.dropout(sequence_output)
         logits = self.fc(embedded)
 
         outputs = (logits,)
@@ -203,9 +244,9 @@ class BertPosTaggerElectra(ElectraPreTrainedModel):
         loss = None
         if labels is not None:
             if self.args.use_crf:
-                slot_loss = self.crf(logits, labels, mask=attention_mask.byte(), reduction='mean')
-                slot_loss = -1 * slot_loss  # negative log-likelihood
-                outputs = (slot_loss,) + outputs
+                loss = self.crf(logits, labels, mask=attention_mask.byte(), reduction='mean')
+                loss = -1 * loss  # negative log-likelihood
+                outputs = (loss,) + outputs
             else:
                 loss_fct = CrossEntropyLoss(ignore_index=self.args.ignore_index)
                 loss_unbalance = SelfAdjDiceLoss(reduction="mean")
@@ -224,19 +265,35 @@ class BertPosTaggerElectra(ElectraPreTrainedModel):
                         loss += loss_unbalance(logits.view(-1, self.num_labels), labels.view(-1))
                 outputs = (loss,) + outputs
 
+        if return_dict:
+            return TokenClassifierOutput(
+                loss=loss,
+                logits=logits,
+                hidden_states=electra_outputs.hidden_states,
+                attentions=electra_outputs.attentions
+            )
         return outputs  # (loss), logits, (hidden_states), (attentions)
 
 
-class PhoBertPosTagger(RobertaForTokenClassification):
+class PhoBertPosTagger(RobertaPreTrainedModel):
     def __init__(self, config, args):
         super(PhoBertPosTagger, self).__init__(config)
+
+        self.args = args
+        self.store_dict = args.__dict__
+
         self.num_labels = config.num_labels
+        self.roberta = RobertaModel(config, add_pooling_layer=False)
+        self.dropout = nn.Dropout(args.dropout_prob)
+
         if args.pool_type == 'concat':
             self.classifier = nn.Linear(int(args.num_hidden_layer) * config.hidden_size, self.num_labels)
         else:
             self.classifier = nn.Linear(config.hidden_size, self.num_labels)
-        self.args = args
-        self.store_dict = args.__dict__
+
+        if self.args.use_crf:
+            self.crf = CRF(num_tags=self.num_labels, batch_first=True)
+
         self.init_weights()
 
     def forward(
@@ -254,7 +311,7 @@ class PhoBertPosTagger(RobertaForTokenClassification):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.roberta(
+        roberta_outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -267,9 +324,11 @@ class PhoBertPosTagger(RobertaForTokenClassification):
         )
 
         if self.args.pool_type == "concat":
-            sequence_output = torch.cat(outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=-1)
+            sequence_output = torch.cat(
+                roberta_outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=-1)
         else:
-            sequence_output = torch.mean(torch.stack(outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=0), dim=0)
+            sequence_output = torch.mean(torch.stack(
+                roberta_outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=0), dim=0)
 
         sequence_output = self.dropout(sequence_output)
         logits = self.classifier(sequence_output)
@@ -279,9 +338,9 @@ class PhoBertPosTagger(RobertaForTokenClassification):
         loss = None
         if labels is not None:
             if self.args.use_crf:
-                slot_loss = self.crf(logits, labels, mask=attention_mask.byte(), reduction='mean')
-                slot_loss = -1 * slot_loss  # negative log-likelihood
-                outputs = (slot_loss,) + outputs
+                loss = self.crf(logits, labels, mask=attention_mask.byte(), reduction='mean')
+                loss = -1 * loss  # negative log-likelihood
+                outputs = (loss,) + outputs
             else:
                 loss_fct = CrossEntropyLoss(ignore_index=self.args.ignore_index)
                 loss_unbalance = SelfAdjDiceLoss(reduction="mean")
@@ -299,19 +358,35 @@ class PhoBertPosTagger(RobertaForTokenClassification):
                         loss += loss_unbalance(logits.view(-1, self.num_labels), labels.view(-1))
                 outputs = (loss,) + outputs
 
+        if return_dict:
+            return TokenClassifierOutput(
+                loss=loss,
+                logits=logits,
+                hidden_states=roberta_outputs.hidden_states,
+                attentions=roberta_outputs.attentions
+            )
         return outputs
 
 
-class XLMRobertaPosTagger(XLMRobertaForTokenClassification):
+class XLMRobertaPosTagger(XLMRobertaPreTrainedModel):
     def __init__(self, config, args):
         super(XLMRobertaPosTagger, self).__init__(config)
+
+        self.args = args
+        self.store_dict = args.__dict__
+
         self.num_labels = config.num_labels
+        self.roberta = XLMRobertaModel(config, add_pooling_layer=False)
+        self.dropout = nn.Dropout(args.dropout_prob)
+
         if args.pool_type == 'concat':
             self.classifier = nn.Linear(int(args.num_hidden_layer) * config.hidden_size, self.num_labels)
         else:
             self.classifier = nn.Linear(config.hidden_size, self.num_labels)
-        self.args = args
-        self.store_dict = args.__dict__
+
+        if self.args.use_crf:
+            self.crf = CRF(num_tags=self.num_labels, batch_first=True)
+
         self.init_weights()
 
     def forward(
@@ -329,7 +404,7 @@ class XLMRobertaPosTagger(XLMRobertaForTokenClassification):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.roberta(
+        roberta_outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -342,9 +417,11 @@ class XLMRobertaPosTagger(XLMRobertaForTokenClassification):
         )
 
         if self.args.pool_type == "concat":
-            sequence_output = torch.cat(outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=-1)
+            sequence_output = torch.cat(
+                roberta_outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=-1)
         else:
-            sequence_output = torch.mean(torch.stack(outputs[2][-int(self.args.num_hidden_layer):], dim=0), dim=0)
+            sequence_output = torch.mean(
+                torch.stack(roberta_outputs.hidden_states[-int(self.args.num_hidden_layer):], dim=0), dim=0)
         
         sequence_output = self.dropout(sequence_output)
         logits = self.classifier(sequence_output)
@@ -352,9 +429,9 @@ class XLMRobertaPosTagger(XLMRobertaForTokenClassification):
         loss = None
         if labels is not None:
             if self.args.use_crf:
-                slot_loss = self.crf(logits, labels, mask=attention_mask.byte(), reduction='mean')
-                slot_loss = -1 * slot_loss  # negative log-likelihood
-                outputs = (slot_loss,) + outputs
+                loss = self.crf(logits, labels, mask=attention_mask.byte(), reduction='mean')
+                loss = -1 * loss  # negative log-likelihood
+                outputs = (loss,) + outputs
             else:
                 loss_fct = CrossEntropyLoss(ignore_index=self.args.ignore_index)
                 loss_unbalance = SelfAdjDiceLoss(reduction="mean")
@@ -372,4 +449,11 @@ class XLMRobertaPosTagger(XLMRobertaForTokenClassification):
                         loss += loss_unbalance(logits.view(-1, self.num_labels), labels.view(-1))
                 outputs = (loss,) + outputs
 
+        if return_dict:
+            return TokenClassifierOutput(
+                loss=loss,
+                logits=logits,
+                hidden_states=roberta_outputs.hidden_states,
+                attentions=roberta_outputs.attentions
+            )
         return outputs

@@ -305,6 +305,12 @@ def create_optimizer_and_scheduler(model, config, total_steps):
          'weight_decay': 0.0}
     ]
     optimizer = AdamW(optimizer_grouped_parameters, lr=config.learning_rate, eps=config.adam_epsilon)
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=config.warmup_steps,
+    num_warmup_steps_by_ratio = int(total_steps * config.warmup_proportion)
+    num_warmup_steps_absolute = config.warmup_steps
+    if num_warmup_steps_absolute == 0 or num_warmup_steps_by_ratio == 0:
+        num_warmup_steps = max(num_warmup_steps_by_ratio, num_warmup_steps_absolute)
+    else:
+        num_warmup_steps = min(num_warmup_steps_by_ratio, num_warmup_steps_absolute)
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps,
                                                 num_training_steps=total_steps)
     return optimizer, scheduler

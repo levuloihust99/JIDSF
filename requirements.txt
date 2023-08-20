@@ -14,3 +14,4 @@ unidecode
 PyYAML
 sentencepiece
 jsonlines
+datasets

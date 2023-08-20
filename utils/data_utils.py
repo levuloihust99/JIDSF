@@ -101,7 +101,7 @@ def segment_word(sentences, segmenter, error_tracker=None):
     Segment vietnamese sentence into multi-syllable words.
 
     Args:
-        sentences: List oner-medical-loif tagged sentences, each sentence is a list of tagged tokens.
+        sentences: List of tagged sentences, each sentence is a list of tagged tokens.
             E.g. [('Bệnh', 'B-ten_benh'), ('ung', 'I-ten_benh'), ('thư', 'I-ten_benh'), ('rất', 'O'), ('nguy', 'O'), ('hiểm', 'O')]
         segmenter: RDRSegmenter. Follow https://github.com/VinAIResearch/PhoBERT to see guidance for instantiating RDRSegmenter
         error_tracker: A dictionary to store index of error sentence.

@@ -13,39 +13,40 @@ def create_parser():
 def add_io_params(parser):
     """Params for data/models settings"""
 
-    parser.add_argument('--model-path')
-    parser.add_argument('--tokenizer-path')
-    parser.add_argument('--model-save')
+    parser.add_argument('--model_path')
+    parser.add_argument('--tokenizer_path')
+    parser.add_argument('--model_save')
     parser.add_argument('--data', choices=['ner-multisources', 'ner-multisources-reduce', 'ner-covid19-vinai',
-                                           'ner-vlsp-2018', 'ner-cistailab-2021', 'ner-cistailab-2022'])
+                                           'ner-vlsp-2018', 'ner-cistailab-2021', 'ner-cistailab-2022', 'ner-hackathon-2023'])
 
 
 def add_training_params(parser):
     """Params for training settings."""
 
-    parser.add_argument('--custom-train', type=eval)
-    parser.add_argument('--train-batch-size', type=int)
-    parser.add_argument('--eval-batch-size', type=int)
-    parser.add_argument('--max-grad-norm', type=float)
-    parser.add_argument('--dropout-prob', type=float)
-    parser.add_argument('--use-crf', type=eval)
-    parser.add_argument('--weight-decay', type=float)
-    parser.add_argument('--adam-epsilon', type=float)
-    parser.add_argument('--learning-rate', type=float)
-    parser.add_argument('--num-train-epochs', type=int)
-    parser.add_argument('--gradient-accumulation-steps', type=int)
-    parser.add_argument('--warmup-proportion', type=float)
-    parser.add_argument('--max-steps', type=int)
-    parser.add_argument('--warmup-steps', type=int)
-    parser.add_argument('--save-checkpoints', type=eval)
-    parser.add_argument('--pool-type', choices=['concat', 'average'])
-    parser.add_argument('--ignore-index', type=int)
-    parser.add_argument('--add-special-tokens', type=eval)
-    parser.add_argument('--use-dice-loss', type=eval)
-    parser.add_argument('--num-hidden-layer', type=int)
-    parser.add_argument('--use-word-segmenter', type=eval)
+    parser.add_argument('--custom_train', type=eval)
+    parser.add_argument('--train_batch_size', type=int)
+    parser.add_argument('--eval_batch_size', type=int)
+    parser.add_argument('--max_grad_norm', type=float)
+    parser.add_argument('--dropout_prob', type=float)
+    parser.add_argument('--use_crf', type=eval)
+    parser.add_argument('--weight_decay', type=float)
+    parser.add_argument('--adam_epsilon', type=float)
+    parser.add_argument('--learning_rate', type=float)
+    parser.add_argument('--num_train_epochs', type=int)
+    parser.add_argument('--gradient_accumulation_steps', type=int)
+    parser.add_argument('--warmup_proportion', type=float)
+    parser.add_argument('--max_steps', type=int)
+    parser.add_argument('--warmup_steps', type=int)
+    parser.add_argument('--save_checkpoints', type=eval)
+    parser.add_argument('--max_seq_length', type=int)
+    parser.add_argument('--pool_type', choices=['concat', 'average'])
+    parser.add_argument('--ignore_index', type=int)
+    parser.add_argument('--add_special_tokens', type=eval)
+    parser.add_argument('--use_dice_loss', type=eval)
+    parser.add_argument('--num_hidden_layer', type=int)
+    parser.add_argument('--use_word_segmenter', type=eval)
     parser.add_argument('--seed', type=int)
-    parser.add_argument('--gpu-id', type=int)
+    parser.add_argument('--gpu_id', type=int)
 
 def add_json_params(parser):
     """Params in json file or dictionary object."""
