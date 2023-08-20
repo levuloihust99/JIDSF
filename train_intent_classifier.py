@@ -5,7 +5,7 @@ import torch
 import logging
 import argparse
 from torch import nn
-from datetime import datetime
+from datetime import datetime, timedelta
 from tqdm import tqdm
 
 from datasets import Dataset
@@ -32,35 +32,11 @@ add_color_formatter(logging.root)
 with open("configs/intent_cls_config.json", "r") as reader:
     cfg = json.load(reader)
 cfg = argparse.Namespace(**cfg)
-data_path = "data/train.jsonl"
-train_indices_path = "data/split/train_indices.json"
-dev_indices_path = "data/split/dev_indices.json"
-
-tokenizer_path = "vinai/phobert-base"
-tokenizer_type = "phobert"
-model_path = "vinai/phobert-base"
-model_type = "phobert"
-
-max_seq_length = 256
-train_batch_size = 16
-eval_batch_size = 16
-
-weight_decay = 0.1
-learning_rate = 5e-5
-adam_epsilon = 1e-8
-num_train_epochs = 10
-gradient_accumulation_steps = 1
-warmup_proportion = 0.1
-max_steps = -1
-warmup_steps = 0
-seed = 12345
-gpu_id = 0
-checkpoint_dir = "checkpoints/intent_cls"
 
 
 def format_time(elapsed):
     elapsed_rounded = int(round(elapsed))
-    return str(datetime.timedelta(seconds=elapsed_rounded))
+    return str(timedelta(seconds=elapsed_rounded))
 
 
 def load_data():
@@ -152,7 +128,7 @@ def create_optimizer_and_scheduler(model, total_steps):
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
         {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-         'weight_decay': weight_decay},
+         'weight_decay': cfg.weight_decay},
         {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
          'weight_decay': 0.0}
     ]
@@ -191,9 +167,9 @@ class IntentClassifierTrainer:
         self.int2tag = int2tag
 
         if torch.cuda.is_available():
-            self.device = torch.device("cuda:{}".format(gpu_id))
+            self.device = torch.device("cuda:{}".format(cfg.gpu_id))
             logger.info('There are %d GPU(s) available.' % torch.cuda.device_count())
-            logger.info('We will use the GPU:{}, {}'.format(torch.cuda.get_device_name(gpu_id), torch.cuda.get_device_capability(gpu_id)))
+            logger.info('We will use the GPU:{}, {}'.format(torch.cuda.get_device_name(cfg.gpu_id), torch.cuda.get_device_capability(cfg.gpu_id)))
         # elif torch.backends.mps.is_available():
         #     self.device = torch.device("mps")
         #     logger.info("MPS backend is available, using MPS.")
@@ -208,8 +184,8 @@ class IntentClassifierTrainer:
         self.best_report = None
 
         self.model.train()
-        for epoch in range(0, num_train_epochs):
-            logger.info(' Epoch {:} / {:}'.format(epoch + 1, num_train_epochs))
+        for epoch in range(0, cfg.num_train_epochs):
+            logger.info(' Epoch {:} / {:}'.format(epoch + 1, cfg.num_train_epochs))
 
             t0 = time.time()
             total_loss = 0
@@ -239,8 +215,9 @@ class IntentClassifierTrainer:
 
                 progress_bar.update(1)
                 progress_bar.set_postfix({"Loss": float(batch_loss)})
-            
-            avg_train_loss = total_loss / len(self.train_dataloader)
+                break
+
+            avg_train_loss = total_loss / len(self.train_data_loader)
             logger.info("Average training loss: {0:.5f}".format(avg_train_loss))
             logger.info("Training epoch took: {:}".format(format_time(time.time() - t0)))
             self.eval()
@@ -274,7 +251,7 @@ class IntentClassifierTrainer:
             batch_logits = batch_outputs.logits
             batch_preds = torch.argmax(batch_logits, dim=-1)
 
-            for pred, label in zip(batch_labels, batch_preds):
+            for pred, label in zip(batch_preds, batch_labels):
                 pred = pred.item()
                 label = label.item()
                 if pred != label:
@@ -286,16 +263,21 @@ class IntentClassifierTrainer:
             
         eval_results = {}
         for tag_id, metrics in eval_tracker.items():
-            precision = metrics["TP"] / (metrics["TP"] + metrics["FP"])
-            recall = metrics["TP"] / (metrics["TP"] + metrics["FN"])
+            if metrics["TP"] == 0:
+                precision = 0
+                recall = 0
+            else:
+                precision = metrics["TP"] / (metrics["TP"] + metrics["FP"])
+                recall = metrics["TP"] / (metrics["TP"] + metrics["FN"])
             if precision == 0 or recall == 0:
                 f1 = 0
             else:
                 f1 = 2 * precision * recall / (precision + recall)
             eval_results[self.int2tag[tag_id]] = {
-                "Precision": metrics["TP"] / (metrics["TP"] + metrics["FP"]),
-                "Recall": metrics["TP"] / (metrics["TP"] + metrics["FN"]),
-                "F1-score": f1
+                "Precision": precision,
+                "Recall": recall,
+                "F1-score": f1,
+                "Support": metrics["Support"]
             }
         
         precisions = []
@@ -324,7 +306,6 @@ class IntentClassifierTrainer:
             "Support": total
         }
 
-        total = sum(supports)
         weights = [s / total for s in supports]
         weighted_p = 0.0
         weighted_r = 0.0
@@ -373,11 +354,11 @@ class IntentClassifierTrainer:
         for tag in self.tag2int:
             if max_tag_length < len(tag):
                 max_tag_length = len(tag)
-        if len("Micro") < max_tag_length:
+        if max_tag_length < len("Micro"):
             max_tag_length = len("Micro")
-        if len("Macro") < max_tag_length:
+        if max_tag_length < len("Macro"):
             max_tag_length = len("Macro")
-        if len("Weighted") < max_tag_length:
+        if max_tag_length < len("Weighted"):
             max_tag_length = len("Weighted")
 
         max_p_length = len("Precision")
@@ -492,12 +473,12 @@ class IntentClassifierTrainer:
         eval_str += "\n"
 
         logger.info("***** Eval results *****")
-        logger.info("\n%s", eval_str)
+        logger.info("\n\n%s", eval_str)
 
         if self.best_result == 0 or self.best_result < micro_eval["F1-score"]:
-            output_dir = os.path.join(checkpoint_dir,
+            output_dir = os.path.join(cfg.checkpoint_dir,
                                     'checkpoint-{}-{}-{:.3f}'.format(self.model.__class__.__qualname__,
-                                                                    learning_rate,
+                                                                    cfg.learning_rate,
                                                                     micro_eval['F1-score']))
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
@@ -513,9 +494,9 @@ class IntentClassifierTrainer:
             model_to_save = self.model.module if hasattr(self.model, 'module') else self.model
             model_to_save.save_pretrained(output_dir)
             self.tokenizer.save_pretrained(output_dir)
-            with open(os.path.join(cfg.output_dir, "label_mappings.json"), "w") as writer:
+            with open(os.path.join(output_dir, "label_mappings.json"), "w") as writer:
                 json.dump(self.tag2int, writer, indent=4, ensure_ascii=False)
-            with open(os.path.join(cfg.checkpoint_dir, "training_config.json"), "w") as writer:
+            with open(os.path.join(output_dir, "training_config.json"), "w") as writer:
                 json.dump(cfg.__dict__, writer, indent=4, ensure_ascii=False)
 
 def main():
@@ -525,15 +506,15 @@ def main():
     train_data, dev_data, tag2int, int2tag = load_data()
     tokenizer = load_tokenizer()
     train_data_loader = create_dataloader(
-        train_data, tokenizer, tag2int, training=True, batch_size=train_batch_size)
+        train_data, tokenizer, tag2int, training=True, batch_size=cfg.train_batch_size)
     dev_data_loader = create_dataloader(
-        dev_data, tokenizer, tag2int, training=False, batch_size=eval_batch_size)
+        dev_data, tokenizer, tag2int, training=False, batch_size=cfg.eval_batch_size)
     model = load_model(num_labels=len(tag2int))
 
-    if max_steps > 0:
-        total_steps = max_steps
+    if cfg.max_steps > 0:
+        total_steps = cfg.max_steps
     else:
-        total_steps = len(train_data_loader) * num_train_epochs
+        total_steps = len(train_data_loader) * cfg.num_train_epochs
     optimizer, scheduler = create_optimizer_and_scheduler(model, total_steps)
 
     trainer = IntentClassifierTrainer(
