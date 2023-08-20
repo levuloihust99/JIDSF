@@ -15,3 +15,5 @@ PyYAML
 sentencepiece
 jsonlines
 datasets
+sanic >= 23.3.0, < 24
+Sanic-Cors >= 2.2.0, < 3
