@@ -4,6 +4,7 @@ import sanic
 import asyncio
 import logging
 import argparse
+import unicodedata
 import concurrent.futures
 
 from typing import Text
@@ -75,6 +76,7 @@ def after_response_func(request, response):
 async def extract_entities(request):
     data = request.json
     text = data["text"]
+    text = unicodedata.normalize("NFKC", text)
     entities = request.app.ctx.ner_processor.extract(text)
     return sanic.json({"entities": entities})
 

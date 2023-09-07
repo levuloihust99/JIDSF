@@ -8,6 +8,8 @@ import unicodedata
 import unidecode
 import numpy as np
 from typing import Literal
+from transformers import BertTokenizer
+basic_tokenizer = BertTokenizer.from_pretrained("NlpHUST/vibert4news-base-cased").basic_tokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -261,6 +263,17 @@ class NERProcessor(object):
         return self.segmenter.segment(text)
 
     def get_prediction(self, text):
+        # words = text.split()
+        # words_wo_puncs = []
+        # for word in words:
+        #     if re.search(r"[.!?,:;\[\]\(\)]", word):
+        #         words_wo_puncs.extend(basic_tokenizer.tokenize(word))
+        #     else:
+        #         words_wo_puncs.append(word)
+
+        # tokens = []
+        # for word in words_wo_puncs:
+        #     tokens.extend(self.ner_tokenizer.tokenize(word))
         tokens = self.ner_tokenizer.tokenize(text)
         tokens = [self.ner_tokenizer.cls_token] + tokens + [self.ner_tokenizer.sep_token]
         token_ids = self.ner_tokenizer.convert_tokens_to_ids(tokens)

@@ -107,7 +107,9 @@ def get_collate_fn(tokenizer, tag2int):
         return {
             "input_ids": inputs.input_ids,
             "attention_mask": inputs.attention_mask,
-            "labels": labels
+            "labels": labels,
+            "texts": texts,
+            "intents": intents
         }
     return collate_fn
 
@@ -234,6 +236,7 @@ class IntentClassifierTrainer:
                 "Support": 0
             } for tag, i in self.tag2int.items()
         }
+        eval_progress_bar = tqdm(desc="Batch", total=len(self.dev_data_loader))
         for batch in self.dev_data_loader:
             batch = {k : v.to(self.device) for k, v in batch.items()}
             batch_input_ids = batch["input_ids"]
@@ -259,6 +262,8 @@ class IntentClassifierTrainer:
                 else:
                     eval_tracker[pred]["TP"] += 1
                 eval_tracker[label]["Support"] += 1
+            
+            eval_progress_bar.update(1)
             
         eval_results = {}
         for tag_id, metrics in eval_tracker.items():
@@ -508,6 +513,7 @@ def main():
         train_data, tokenizer, tag2int, training=True, batch_size=cfg.train_batch_size)
     dev_data_loader = create_dataloader(
         dev_data, tokenizer, tag2int, training=False, batch_size=cfg.eval_batch_size)
+
     model = load_model(num_labels=len(tag2int))
 
     if cfg.max_steps > 0:

@@ -1,0 +1,6 @@
+{
+    "ner-hackathon-2023": {
+        "train": "data/split/train_data.csv",
+        "dev": "data/split/dev_data.csv"
+    }
+}
