@@ -1,4 +1,4 @@
-# INSTALLATION GUIDE
+# GUIDE
 ## Requirements
 - Python 3.8
 ### 1. Create virtual environment and install requirements
@@ -6,55 +6,104 @@
 $ python -m venv .venv
 $ source .venv/bin/activate
 (.venv)$ pip install -U pip
-(.venv)$ pip install wheel
 (.venv)$ pip install -r requirements.txt
 ```
 
-### 2. Install VnCoreNLP
+## Train NER
+
+### <a name="data-preparation"></a> 1. Data preparation
+Download data at [Hackathon-2023-SLU](https://drive.google.com/file/d/1MqG7cUIc8XMQNeTK-pzoaKqR65l2UUQF/view?usp=sharing) and extract to the root directory of this repository.
+
+### 2. Train
+<pre>
+python train.py \
+    --model_path vinai/phobert-base \
+    --tokenizer_path vinai/phobert-base \
+    --model_save checkpoints \
+    --data ner-hackathon-2023 \
+    --train_batch_size 16 \
+    --eval_batch_size 16 \
+    --save_checkpoints True \
+    --max_seq_length 256 \
+    --pool_type concat \
+    --warmup_proportion 0.05 \
+    --ignore_index 0 \
+    --num_hidden_layer 1 \
+    --add_special_tokens True \
+    --use_word_segmenter True \
+    --seed 12345 \
+    --gpu_id 0
+</pre>
+
+## Train Intent Classifier
+### 1. Data preparation
+See [previous section](#data-preparation)
+### 2. Train
 ```shell
-$ mkdir -p vncorenlp/models/wordsegmenter
-$ wget https://raw.githubusercontent.com/vncorenlp/VnCoreNLP/master/VnCoreNLP-1.1.1.jar
-$ wget https://raw.githubusercontent.com/vncorenlp/VnCoreNLP/master/models/wordsegmenter/vi-vocab
-$ wget https://raw.githubusercontent.com/vncorenlp/VnCoreNLP/master/models/wordsegmenter/wordsegmenter.rdr
-$ mv VnCoreNLP-1.1.1.jar vncorenlp/ 
-$ mv vi-vocab vncorenlp/models/wordsegmenter/
-$ mv wordsegmenter.rdr vncorenlp/models/wordsegmenter/
+python train_intent_classifier.py
 ```
 
-### 3. Install Java (to use vncorenlp)
+## Infer NER
+### 1. Run NER API
+
+**Prerequisites**: Java Development Kit (JDK)
+
+#### Run segment endpoint
 ```shell
-$ sudo apt install default-jre
+git clone https://github.com/levuloihust99/JavaSegmentationServer.git
+cd JavaSegmentationServer
+javac -d bin server/JsonServer.java
+java -cp bin server.JsonServer
+```
+The segment endpoint runs at port 8088 by default.
+
+#### Run NER API
+```shell
+python -m api.serve \
+    --model_type phobert \ # if using phobert
+    --model_path /path/to/the/trained/NER/model \
+    --segment True \ # if using phobert
+    --segment_endpoint http://localhost:8088/segment
 ```
 
-### 4. Download data and pretrained
-- Data is available at [data](https://drive.google.com/drive/folders/1zsq77pSPEKBQAVu4wvvBw9z5muc3WvGv?usp=sharing).
-- Pre-trained language models are available at [pretrained](https://drive.google.com/drive/folders/12fku70JjD8AtZUa2sgtQGgoyaTWz0GUG?usp=sharing)
-- Place folder `data` and `pretrained` under root folder of the project, i.e
+#### Prepare input data for extract NER
 
-        .
-        ├── data/
-        ├── pretrained/
-        ├── data_utils.py
-        ├── models.py
-        ├── predict.py
-        ├── README.md
-        ├── requirements.txt
-        ├── train.py
-        ├── utils.py
-        └── vncorenlp/
+* Call ASR api to convert audio to text
 
-### 4. Run training (default parameters)
+* The result should be saved in a `.json` file with the following format:
+<pre>
+[
+    {
+        "file_name": Audio file name,
+        "raw": ASR result before normalization,
+        "norm": ASR result after normalization
+    }
+]
+</pre>
+
+E.g.
+
+<pre>
+[
+    {
+        "file_name": "01MrFDhm4z0EUqG9IKlTGSt.wav",
+        "raw": "bộ cho anh em hàn cửa số mười tới",
+        "norm": "Bộ cho anh em hàn cửa số 10 tới."
+    }
+]
+</pre>
+
+Suppose the above data is saved in `data/asr_public_test_20230907.json`, run the following script to extract entities.
+
 ```shell
-$ python train.py \
-    --model-path pretrained/vinai/phobert-base \
-    --learning-rate 5e-5 \
-    --max-grad-norm 1.0 \
-    --batch-size 16 \
-    --pool-type concat \
-    --ignore-index 0 \
-    --add-special-tokens True \
-    --use-dice-loss False \
-    --num-hidden-layer 1 \
-    --use-word-segmenter True \
-    --save-pretrained False
+python extract_entity.py
 ```
+
+NER output is saved in `public_submission_NER_20230907.jsonl`
+
+## Infer intent classification
+```shell
+python infer_intent_cls.py
+```
+
+Running this command generates a `predictions.jsonl` file. Zip this file, rename to `Submission.zip` and submit.

@@ -23,11 +23,11 @@ def main():
     model.eval()
 
     data = []
-    with open("data/asr_output.json") as reader:
+    with open("data/asr_public_test_20230907.json") as reader:
         data = json.load(reader)
 
     ner_data = []
-    with open("public_submission_NER.jsonl", "r") as reader:
+    with open("public_submission_NER_20230907.jsonl", "r") as reader:
         for line in reader:
             ner_data.append(json.loads(line.strip()))
     
@@ -52,7 +52,7 @@ def main():
             })
             print("Done #{}".format(idx))
     
-    with open("public_submission.jsonl", "w") as writer:
+    with open("predictions.jsonl", "w") as writer:
         for item in out_data:
             writer.write(json.dumps(item, ensure_ascii=False) + "\n")
 
