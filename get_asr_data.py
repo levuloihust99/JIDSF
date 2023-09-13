@@ -1,15 +1,13 @@
 import os
 import json
 import requests
+import argparse
 
 from urllib3.filepost import encode_multipart_formdata
 from urllib3.fields import RequestField, guess_content_type
 
-ASR_ENDPOINT = "http://localhost:8907/speech_to_text"
-# PUBLIC_TEST_DIR = "data/public_test"
-TRAIN_AUDIO_DIR = "data/public_test_16k_1ac_vad"
 
-def make_request(file_path):
+def make_request(asr_endpoint, file_path):
     with open(file_path, "rb") as reader:
         content = reader.read()
 
@@ -22,7 +20,7 @@ def make_request(file_path):
         ("is_normalize", "1")
     ]
     body, content_type = encode_multipart_formdata(payload)
-    response = requests.post(ASR_ENDPOINT, headers={
+    response = requests.post(asr_endpoint, headers={
         'Content-Type': content_type,
         "api_key": os.environ["API_KEY"]
     }, data=body)
@@ -35,23 +33,16 @@ def make_request(file_path):
 
 
 def main():
-    filenames = []
-    with open("data/public_test_files.txt", "r") as reader:
-        for line in reader:
-            line = line.strip()
-            if line:
-                filenames.append(line)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--asr_endpoint", "-e", default="http://localhost:8908/speech_to_text")
+    parser.add_argument("--audio_dir", "-i", default="data/public_test")
+    parser.add_argument("--output_path", "-o", default="data/20230913/asr_output_base.json")
+    args = parser.parse_args()
 
-    # train_data = []
-    # with open("data/train_verified.jsonl") as reader:
-    #     for line in reader:
-    #         train_data.append(json.loads(line.strip()))
-    # filenames = [item["file"] for item in train_data]
+    filenames = os.listdir(args.audio_dir)
 
-    output_path = "data/asr_public_test_20230907.json"
-
-    if os.path.exists(output_path):
-        with open(output_path) as reader:
+    if os.path.exists(args.output_path):
+        with open(args.output_path) as reader:
             outputs = json.load(reader)
     else:
         outputs = [None] * len(filenames)
@@ -59,17 +50,18 @@ def main():
         if outputs[idx]:
             print("Skip #{}".format(idx))
             continue
-        file_path = os.path.join(TRAIN_AUDIO_DIR, filename)
+        file_path = os.path.join(args.audio_dir, filename)
         try:
-            asr_output = make_request(file_path)
+            asr_output = make_request(args.asr_endpoint, file_path)
             outputs[idx] = {"file_name": filename, **asr_output}
             print("Successful #{}".format(idx))
         except Exception as e:
+            print(e)
             print("Exception: #{}, file name: {}".format(idx, filename))
-            with open(output_path, "w") as writer:
+            with open(args.output_path, "w") as writer:
                 json.dump(outputs, writer, ensure_ascii=False, indent=4)
 
-    with open(output_path, "w") as writer:
+    with open(args.output_path, "w") as writer:
         json.dump(outputs, writer, ensure_ascii=False, indent=4)
 
 

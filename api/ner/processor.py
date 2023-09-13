@@ -332,12 +332,14 @@ class NERProcessor(object):
         input_text = text
         if self.segmenter:
             input_text = self.segment(text)
-            input_text = align_segmented_sentence(text, input_text)
+            # input_text = align_segmented_sentence(text, input_text)
             architecture = "roberta"
         tokens, labels = self.get_prediction(input_text)
         entities = extract_entities(input_text, tokens, labels, architecture)
         for entity in entities:
-            entity["value"] = text[entity["start"] : entity["end"]]
+            entity["value"] = input_text[entity["start"] : entity["end"]]
+            if self.segmenter:
+                entity["value"] = entity["value"].replace("_", " ")
             entity.pop("indexes")
         return entities
 

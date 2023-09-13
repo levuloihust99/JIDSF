@@ -1,36 +1,40 @@
 import json
 import requests
-
-NER_ENDPOINT = "http://localhost:5577/ner"
-headers = {"Content-Type": "application/json"}
+import argparse
 
 
-def load_data():
-    with open("data/asr_public_test_20230907.json") as reader:
+def load_data(data_path):
+    with open(data_path) as reader:
         data = json.load(reader)
     return data
 
 
-def get_entities(text):
-    response = requests.post(NER_ENDPOINT, data=json.dumps({"text": text}), headers=headers)
+def get_entities(ner_endpoint, text):
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(ner_endpoint, data=json.dumps({"text": text}), headers=headers)
     entities = response.json()["entities"]
     return entities
 
 
 def main():
-    inp_data = load_data()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ner_endpoint", "-e", default="http://localhost:5577/ner")
+    parser.add_argument("--data_path", "-i", default="data/20230913/asr_output_base.json")
+    parser.add_argument("--output_path", "-o", default="data/20230913/public_submission_NER.jsonl")
+    args = parser.parse_args()
+    inp_data = load_data(args.data_path)
     out_data = []
     for idx, item in enumerate(inp_data):
         out_item = {}
         out_item["file"] = item["file_name"]
-        entities = get_entities(item["norm"].strip("."))
+        entities = get_entities(args.ner_endpoint, item["norm"].strip("."))
         out_entities = []
         for entity in entities:
             out_entities.append({"type": entity["entity"], "filler": entity["value"]})
         out_item["entities"] = out_entities
         out_data.append(out_item)
         print("Done #{}".format(idx))
-    with open("public_submission_NER_20230907.jsonl", "w") as writer:
+    with open(args.output_path, "w") as writer:
         for item in out_data:
             writer.write(json.dumps(item, ensure_ascii=False) + "\n")
 
