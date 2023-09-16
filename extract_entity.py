@@ -20,7 +20,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ner_endpoint", "-e", default="http://localhost:5577/ner")
     parser.add_argument("--data_path", "-i", default="data/20230913/asr_output_base.json")
-    parser.add_argument("--output_path", "-o", default="data/20230913/public_submission_NER.jsonl")
+    parser.add_argument("--output_path", "-o", default="data/20230916/public_submission_NER_debug.jsonl")
+    parser.add_argument("--debug", default=False, action="store_true")
     args = parser.parse_args()
     inp_data = load_data(args.data_path)
     out_data = []
@@ -30,7 +31,10 @@ def main():
         entities = get_entities(args.ner_endpoint, item["norm"].strip("."))
         out_entities = []
         for entity in entities:
-            out_entities.append({"type": entity["entity"], "filler": entity["value"]})
+            if not args.debug:
+                out_entities.append({"type": entity["entity"], "filler": entity["value"]})
+            else:
+                out_entities.append(entity)
         out_item["entities"] = out_entities
         out_data.append(out_item)
         print("Done #{}".format(idx))

@@ -40,6 +40,11 @@ def extract_entities(
             current_label = label[2:]
             current_idxs.append(idx)
             prev_token_is_entity = True
+            if idx == len(labels) - 1:
+                entities.append({
+                    'entity': current_label,
+                    'indexes': current_idxs
+                })
         elif label.startswith('I-'):
             if prev_token_is_entity:
                 current_idxs.append(idx)
