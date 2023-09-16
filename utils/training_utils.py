@@ -1,5 +1,6 @@
+import json
 import pandas as pd
-from typing import Dict
+from typing import Dict, Text, Literal
 import logging
 from tqdm import tqdm
 from datasets import Dataset
@@ -35,28 +36,49 @@ import sentencepiece as spm
 logger = logging.getLogger(__name__)
 
 
-def load_data(config: NERConfig):
+def _load_data(config: NERConfig, format: Literal["csv", "jsonlines"] = "csv"):
     logger.info("Loading data...")
+    if format == "csv":
+        train_data_path = config.path_to_data['train']
+        dev_data_path   = config.path_to_data['dev']
+        train_df = pd.read_csv(train_data_path, header=0)
+        dev_df   = pd.read_csv(dev_data_path, header=0)
+        
+        if config.use_word_segmenter:
+            train_tokens = train_df.segmented_tokens
+            train_labels = train_df.segmented_labels
+            dev_tokens   = dev_df.segmented_tokens
+            dev_labels   = dev_df.segmented_labels
+        else:
+            train_tokens = train_df.tokens
+            train_labels = train_df.labels
+            dev_tokens   = dev_df.tokens
+            dev_labels   = dev_df.labels
 
-    train_data_path = config.path_to_data['train']
-    dev_data_path   = config.path_to_data['dev']
-    train_df = pd.read_csv(train_data_path, header=0)
-    dev_df   = pd.read_csv(dev_data_path, header=0)
-    
-    if config.use_word_segmenter:
-        train_tokens = train_df.segmented_tokens
-        train_labels = train_df.segmented_labels
-        dev_tokens   = dev_df.segmented_tokens
-        dev_labels   = dev_df.segmented_labels
+        train_sentences = [list(zip(eval(tokens), eval(labels))) for tokens, labels in zip(train_tokens, train_labels)]
+        dev_sentences = [list(zip(eval(tokens), eval(labels))) for tokens, labels in zip(dev_tokens, dev_labels)]
     else:
-        train_tokens = train_df.tokens
-        train_labels = train_df.labels
-        dev_tokens   = dev_df.tokens
-        dev_labels   = dev_df.labels
+        if config.use_word_segmenter:
+            token_field = "segmented_tokens"
+            label_field = "segmented_labels"
+        else:
+            token_field = "tokens"
+            label_field = "labels"
+        train_sentences = []
+        with open(config.path_to_data["train"], "r") as reader:
+            for line in reader:
+                train_item = json.loads(line.strip())
+                train_sentences.append(list(zip(train_item[token_field], train_item[label_field])))
+        dev_sentences = []
+        with open(config.path_to_data["dev"], "r") as reader:
+            for line in reader:
+                dev_item = json.loads(line.strip())
+                dev_sentences.append(list(zip(dev_item[token_field], dev_item[label_field])))
+    return train_sentences, dev_sentences
 
-    train_sentences = [list(zip(eval(tokens), eval(labels))) for tokens, labels in zip(train_tokens, train_labels)]
-    dev_sentences = [list(zip(eval(tokens), eval(labels))) for tokens, labels in zip(dev_tokens, dev_labels)]
 
+def load_data(config: NERConfig):
+    train_sentences, dev_sentences = _load_data(config, format=config.data_format)
     tags = set([item for sublist in train_sentences + dev_sentences for _, item in sublist])
     processed_tags = set()
     for tag in tags: # this guarantees both B- and I- are included.
