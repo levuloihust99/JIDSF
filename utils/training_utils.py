@@ -64,16 +64,22 @@ def _load_data(config: NERConfig, format: Literal["csv", "jsonlines"] = "csv"):
         else:
             token_field = "tokens"
             label_field = "labels"
+        all_sentences = []
+        with open(config.path_to_data["all"], "r") as reader:
+            for line in reader:
+                item = json.loads(line.strip())
+                all_sentences.append(list(zip(item[token_field], item[label_field])))
+        with open(config.path_to_data["train_indices"], "r") as reader:
+            train_indices = json.load(reader)
+        with open(config.path_to_data["dev_indices"], "r") as reader:
+            dev_indices = json.load(reader)
         train_sentences = []
-        with open(config.path_to_data["train"], "r") as reader:
-            for line in reader:
-                train_item = json.loads(line.strip())
-                train_sentences.append(list(zip(train_item[token_field], train_item[label_field])))
         dev_sentences = []
-        with open(config.path_to_data["dev"], "r") as reader:
-            for line in reader:
-                dev_item = json.loads(line.strip())
-                dev_sentences.append(list(zip(dev_item[token_field], dev_item[label_field])))
+        for idx in train_indices:
+            train_sentences.append(all_sentences[idx])
+        for idx in dev_indices:
+            dev_sentences.append(all_sentences[idx])
+
     return train_sentences, dev_sentences
 
 

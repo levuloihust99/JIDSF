@@ -12,7 +12,7 @@ class NERConfig(object):
         self.model_save = 'checkpoints' # 
         self.data = 'ner-multisources' # one of 'ner-multisources', 'ner-multisources-reduce', ner-vlsp-2018, 
                                        # 'ner-covid19-vinai', 'ner-cistailab-2021', 'ner-cistailab-2022' 
-        self.data_format = "csv"
+        self.data_format = "jsonlines"
 
         # default training settings
         self.custom_train = False

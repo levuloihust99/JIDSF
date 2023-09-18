@@ -18,6 +18,7 @@ def add_io_params(parser):
     parser.add_argument('--model_save')
     parser.add_argument('--data', choices=['ner-multisources', 'ner-multisources-reduce', 'ner-covid19-vinai',
                                            'ner-vlsp-2018', 'ner-cistailab-2021', 'ner-cistailab-2022', 'ner-hackathon-2023'])
+    parser.add_argument('--data_format', choices=["csv", "jsonlines"])
 
 
 def add_training_params(parser):
