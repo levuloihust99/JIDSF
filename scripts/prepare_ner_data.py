@@ -19,8 +19,7 @@ def separate_punctuation(words: List[Tuple[Text, Text]]):
         _words = basic_tokenizer.tokenize(word)
         if entity.startswith("B-"):
             output_words.extend(
-                [(w, ("B-" if i == 0 else "I-") + entity[2:]) for i, w in enumerate(_words)
-                 for w in _words]
+                [(w, ("B-" if i == 0 else "I-") + entity[2:]) for i, w in enumerate(_words)]
             )
         else:
             output_words.extend([(w, entity) for w in _words])
