@@ -151,6 +151,16 @@ class NERProcessor(object):
                 entity["value"] = entity["value"].replace("_", " ")
         return entities
 
+    def extract_raw(self, text):
+        if self.segmenter:
+            input_text = self.segment(text)
+        else:
+            input_text = text
+        if self.args.lower:
+            input_text = input_text.lower()
+        tokens, labels = self.get_prediction(input_text)
+        return tokens, labels
+
 
 class NERRuleExtractor(object):
     def __init__(self, regexes):

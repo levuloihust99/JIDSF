@@ -19,7 +19,6 @@ from transformers import (
 
 from utils.data_utils import WordSegmenter
 from api.ner.processor import NERProcessor
-from utils.training_utils import load_model
 from utils.logging_utils import add_color_formatter
 from model.modeling import (
     BertPosTagger,
