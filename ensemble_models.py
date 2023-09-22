@@ -117,6 +117,8 @@ def main():
 
         out_entities = []
         for entity in ensemble_results:
+            if word_segmenter:
+                entity["value"] = entity["value"].replace("_", " ")
             if not args.debug:
                 out_entities.append({"type": entity["entity"], "filler": entity["value"]})
             else:

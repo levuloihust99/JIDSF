@@ -239,7 +239,7 @@ class NERTrainer(object):
         if self.best_result == 0 or self.best_result < metrics['slot_f1']:
             if self.config.save_checkpoints:
                 output_dir = os.path.join(self.checkpoint_dir,
-                                        'checkpoint-{}-{}-{:.3f}'.format(self.model.__class__.__qualname__,
+                                        'checkpoint-{}-{}-{:.6f}'.format(self.model.__class__.__qualname__,
                                                                         self.config.learning_rate,
                                                                         metrics['slot_f1']))
                 logger.info("Saving model to %s" % output_dir)
