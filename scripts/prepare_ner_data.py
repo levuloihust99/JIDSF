@@ -1,4 +1,5 @@
 import re
+import os
 import json
 import argparse
 
@@ -63,7 +64,10 @@ def main():
         if end_idx < len(annotation):
             words.extend([(word, "O") for word in annotation[end_idx:].split()])
         annotated_data.append(separate_punctuation(words))
-    
+
+    output_dir = os.path.dirname(args.output_path)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     with open(args.output_path, "w") as writer:
         for item in tqdm(annotated_data, desc="Write"):
             tokens, labels = zip(*item)

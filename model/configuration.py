@@ -10,8 +10,7 @@ class NERConfig(object):
         self.model_path = 'pretrained/NlpHUST/vibert4news-base-cased'
         self.tokenizer_path = 'pretrained/NlpHUST/vibert4news-base-cased'
         self.model_save = 'checkpoints' # 
-        self.data = 'ner-multisources' # one of 'ner-multisources', 'ner-multisources-reduce', ner-vlsp-2018, 
-                                       # 'ner-covid19-vinai', 'ner-cistailab-2021', 'ner-cistailab-2022' 
+        self.data = 'ner-multisources'
         self.data_format = "jsonlines"
 
         # default training settings
