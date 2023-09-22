@@ -88,6 +88,7 @@ def main():
     parser.add_argument("--model_path", default="vinai/phobert-base")
     parser.add_argument("--gpu_id", type=int, default=0)
     parser.add_argument("--segment", type=eval, default=False)
+    parser.add_argument("--lower", default=False, action="store_true")
     parser.add_argument("--segment_endpoint", default="http://localhost:8088/segment")
     args = parser.parse_args()
 
@@ -104,11 +105,13 @@ def main():
 
     if args.segment:
         word_segmenter = WordSegmenter(args.segment_endpoint)
+    else:
+        word_segmenter = None
 
     ner_processor = NERProcessor(
-        ner_tokenizer=tokenizer,
-        ner_model=model,
-        ner_label_mappings=label_mappings,
+        tokenizer=tokenizer,
+        model=model,
+        label_mappings=label_mappings,
         segmenter=word_segmenter,
         args=args
     )
