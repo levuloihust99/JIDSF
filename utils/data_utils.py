@@ -13,7 +13,7 @@ def taggedseq2doccano(sentences):
     error_count = 0
     dataset = []
     for i, sentence in enumerate(sentences):
-        words, labels = zip(*sentence)
+        words, labels = sentence["tokens"], sentence["labels"]
         labels_p = []
         idx = 0
         while idx < len(words):
@@ -38,7 +38,7 @@ def taggedseq2doccano(sentences):
             else: idx += 1
         dataset.append({
             'text': " ".join(words),
-            'labels': labels_p
+            'label': labels_p
         })
     return dataset, error_count
 

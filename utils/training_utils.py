@@ -38,25 +38,17 @@ logger = logging.getLogger(__name__)
 
 def _load_data(config: NERConfig, format: Literal["csv", "jsonlines"] = "csv"):
     logger.info("Loading data...")
+    # load train sentences
     if format == "csv":
         train_data_path = config.path_to_data['train']
-        dev_data_path   = config.path_to_data['dev']
         train_df = pd.read_csv(train_data_path, header=0)
-        dev_df   = pd.read_csv(dev_data_path, header=0)
-        
         if config.use_word_segmenter:
             train_tokens = train_df.segmented_tokens
             train_labels = train_df.segmented_labels
-            dev_tokens   = dev_df.segmented_tokens
-            dev_labels   = dev_df.segmented_labels
         else:
             train_tokens = train_df.tokens
             train_labels = train_df.labels
-            dev_tokens   = dev_df.tokens
-            dev_labels   = dev_df.labels
-
         train_sentences = [list(zip(eval(tokens), eval(labels))) for tokens, labels in zip(train_tokens, train_labels)]
-        dev_sentences = [list(zip(eval(tokens), eval(labels))) for tokens, labels in zip(dev_tokens, dev_labels)]
     else:
         if config.use_word_segmenter:
             token_field = "segmented_tokens"
@@ -71,12 +63,27 @@ def _load_data(config: NERConfig, format: Literal["csv", "jsonlines"] = "csv"):
                 all_sentences.append(list(zip(item[token_field], item[label_field])))
         with open(config.path_to_data["train_indices"], "r") as reader:
             train_indices = json.load(reader)
-        with open(config.path_to_data["dev_indices"], "r") as reader:
-            dev_indices = json.load(reader)
         train_sentences = []
-        dev_sentences = []
         for idx in train_indices:
             train_sentences.append(all_sentences[idx])
+    
+    if not config.do_eval:
+        return train_sentences, []
+
+    if format == "csv":
+        dev_data_path   = config.path_to_data['dev']
+        dev_df   = pd.read_csv(dev_data_path, header=0)
+        if config.use_word_segmenter:
+            dev_tokens = dev_df.segmented_tokens
+            dev_labels = dev_df.segmented_labels
+        else:
+            dev_tokens = dev_df.tokens
+            dev_labels = dev_df.labels
+        dev_sentences = [list(zip(eval(tokens), eval(labels))) for tokens, labels in zip(dev_tokens, dev_labels)]
+    else:
+        with open(config.path_to_data["dev_indices"], "r") as reader:
+            dev_indices = json.load(reader)
+        dev_sentences = []
         for idx in dev_indices:
             dev_sentences.append(all_sentences[idx])
 
@@ -242,18 +249,14 @@ def get_collate_fn(pad_token_id):
 
 def load_tokenizer(config: NERConfig, **kwargs):
     logger.info('Loading BERT tokenizer...')
-    if config.tokenizer_path.find('NlpHUST/vibert4news-base-cased') > -1:
+    if config.tokenizer_path.find('NlpHUST/vibert4news') > -1:
         tokenizer = BertTokenizer.from_pretrained(config.tokenizer_path, **kwargs)
-    elif config.tokenizer_path.find('NlpHUST/vi-electra-base') > -1:
+    elif config.tokenizer_path.find('NlpHUST/vi-electra') > -1:
         tokenizer = ElectraTokenizer.from_pretrained(config.tokenizer_path, **kwargs)
-    elif config.tokenizer_path.find('vinai/phobert-base') > -1:  #
+    elif config.tokenizer_path.find('vinai/phobert') > -1:  #
         tokenizer = PhobertTokenizer.from_pretrained(config.tokenizer_path, **kwargs)
-    elif config.tokenizer_path.find('xlm-roberta-base') > -1:
+    elif config.tokenizer_path.find('xlm-roberta') > -1:
         tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_path, **kwargs)
-    elif config.tokenizer_path.find('electra-cmc') > -1:
-        sp_model = spm.SentencePieceProcessor()
-        sp_model.load(config.tokenizer_path)
-        tokenizer = SentencePieceTokenizer(sp_model=sp_model)
     elif config.tokenizer_path.find('distilbert') > -1:
         tokenizer = BertTokenizer.from_pretrained(config.tokenizer_path, **kwargs)
     else:
@@ -263,7 +266,7 @@ def load_tokenizer(config: NERConfig, **kwargs):
 
 
 def load_model(config: NERConfig, num_classes: int):
-    if config.model_path.find('NlpHUST/vibert4news-base-cased') > -1:
+    if config.model_path.find('NlpHUST/vibert4news') > -1:
         model = BertPosTagger.from_pretrained(
             config.model_path,
             num_labels=num_classes,
@@ -273,7 +276,7 @@ def load_model(config: NERConfig, num_classes: int):
         )
 
     # vi-electra-base
-    elif config.model_path.find('NlpHUST/vi-electra-base') > -1:
+    elif config.model_path.find('NlpHUST/vi-electra') > -1:
         config = ElectraConfig.from_pretrained(config.model_path, finetuning_task='ner', num_labels=num_classes,
                                                 output_attentions=False, output_hidden_states=True, )
         model = BertPosTaggerElectra.from_pretrained(
@@ -283,7 +286,7 @@ def load_model(config: NERConfig, num_classes: int):
         )
 
     # PhoBert
-    elif config.model_path.find('vinai/phobert-base') > -1:
+    elif config.model_path.find('vinai/phobert') > -1:
         model = PhoBertPosTagger.from_pretrained(
             config.model_path,
             num_labels=num_classes,
@@ -293,7 +296,7 @@ def load_model(config: NERConfig, num_classes: int):
         )
 
     # XLM-roberta
-    elif config.model_path.find('xlm-roberta-base') > -1:
+    elif config.model_path.find('xlm-roberta') > -1:
         model = XLMRobertaPosTagger.from_pretrained(
             config.model_path,
             num_labels=num_classes,

@@ -71,7 +71,7 @@ class NERTrainer(object):
             os.makedirs(self.checkpoint_dir)
         with open(os.path.join(self.checkpoint_dir, "label_mappings.json"), "w") as writer:
             json.dump(tag2int, writer, indent=4, ensure_ascii=False)
-        with open(os.path.join(self.checkpoint_dir, "config.json"), "w") as writer:
+        with open(os.path.join(self.checkpoint_dir, "training_config.json"), "w") as writer:
             json.dump(config.__dict__, writer, indent=4, ensure_ascii=False)
 
         setup_logger(logger, log_file=os.path.join(self.checkpoint_dir, 'track.log'))
@@ -81,6 +81,7 @@ class NERTrainer(object):
         self.best_report = None
         
         self.model.train()
+        global_step = 0
         for epoch in range(0, self.config.num_train_epochs):
             logger.info(' Epoch {:} / {:}'.format(epoch + 1, self.config.num_train_epochs))
 
@@ -144,16 +145,54 @@ class NERTrainer(object):
 
                 progress_bar.update(1)
                 progress_bar.set_postfix({"Loss": float(batch_loss)})
+                global_step += 1
+
+                if isinstance(self.config.save_freq, int) and global_step % self.config.save_freq == 0:
+                    if self.config.do_eval:
+                        self.eval()
+                    else:
+                        output_dir = os.path.join(self.checkpoint_dir,
+                                                'checkpoint-{}-{}-{:.3f}'.format(
+                                                    self.model.__class__.__qualname__,
+                                                    "step{:07d}".format(global_step),
+                                                    self.config.learning_rate
+                                                ))
+                        self.save_checkpoint(output_dir)
 
             avg_train_loss = total_loss / len(self.train_dataloader)
 
             logger.info("Average training loss: {0:.5f}".format(avg_train_loss))
             logger.info("Training epoch took: {:}".format(format_time(time.time() - t0)))
-            self.eval()
+            if self.config.save_freq == "epoch":
+                if self.config.do_eval:
+                    self.eval()
+                else:
+                    output_dir = os.path.join(self.checkpoint_dir,
+                                            'checkpoint-{}-{}-{:.3f}'.format(
+                                                self.model.__class__.__qualname__,
+                                                "epoch{:03d}".format(epoch),
+                                                self.config.learning_rate
+                                            ))
+                    self.save_checkpoint(output_dir)
 
         logger.info("\nTraining complete!\n*************************************************************************************************************************\n\n")
         with open(os.path.join(self.checkpoint_dir, "best_report.txt"), "w") as writer:
             writer.write(self.best_report)
+
+    def save_checkpoint(self, output_dir):
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        logger.info("Saving model to %s" % output_dir)
+
+        model_to_save = self.model.module if hasattr(self.model, 'module') else self.model
+        model_to_save.save_pretrained(output_dir)
+        self.tokenizer.save_pretrained(output_dir)
+
+        with open(os.path.join(output_dir, "label_mappings.json"), "w") as writer:
+            json.dump(self.tag2int, writer, indent=4, ensure_ascii=False)
+        with open(os.path.join(output_dir, "training_config.json"), "w") as writer:
+            json.dump(self.config.__dict__, writer, indent=4, ensure_ascii=False)
             
     def eval(self):
         logger.info("Running Validation...")
@@ -203,8 +242,8 @@ class NERTrainer(object):
                                         'checkpoint-{}-{}-{:.3f}'.format(self.model.__class__.__qualname__,
                                                                         self.config.learning_rate,
                                                                         metrics['slot_f1']))
-                if not os.path.exists(output_dir):
-                    os.makedirs(output_dir)
+                logger.info("Saving model to %s" % output_dir)
+                self.save_checkpoint(output_dir)
 
                 output_eval_file = os.path.join(output_dir, "eval_results.txt")
                 with open(output_eval_file, "w") as writer:
@@ -212,12 +251,6 @@ class NERTrainer(object):
 
                 self.best_result = metrics['slot_f1']
 
-                print("Saving model to %s" % output_dir)
-
-                model_to_save = self.model.module if hasattr(self.model, 'module') else self.model
-                model_to_save.save_pretrained(output_dir)
-                self.tokenizer.save_pretrained(output_dir)
-            
             logger.info("***** Eval results *****")
             logger.info("\n%s", report)
             self.best_report = report

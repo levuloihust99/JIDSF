@@ -15,6 +15,8 @@ class NERConfig(object):
         self.data_format = "jsonlines"
 
         # default training settings
+        self.do_eval = True
+        self.save_freq = "epoch"
         self.custom_train = False
         self.train_batch_size = 32
         self.eval_batch_size = 32

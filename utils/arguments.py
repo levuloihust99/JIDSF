@@ -24,6 +24,15 @@ def add_io_params(parser):
 def add_training_params(parser):
     """Params for training settings."""
 
+    def parse_save_freq(freq):
+        try:
+            freq = int(freq)
+            return freq
+        except Exception as e:
+            return freq
+
+    parser.add_argument('--do_eval', type=parse_save_freq)
+    parser.add_argument('-save_freq', type=int)
     parser.add_argument('--custom_train', type=eval)
     parser.add_argument('--train_batch_size', type=int)
     parser.add_argument('--eval_batch_size', type=int)
