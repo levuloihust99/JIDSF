@@ -152,7 +152,7 @@ class NERTrainer(object):
                         self.eval()
                     else:
                         output_dir = os.path.join(self.checkpoint_dir,
-                                                'checkpoint-{}-{}-{:.3f}'.format(
+                                                'checkpoint-{}-{}-{}'.format(
                                                     self.model.__class__.__qualname__,
                                                     "step{:07d}".format(global_step),
                                                     self.config.learning_rate
@@ -168,7 +168,7 @@ class NERTrainer(object):
                     self.eval()
                 else:
                     output_dir = os.path.join(self.checkpoint_dir,
-                                            'checkpoint-{}-{}-{:.3f}'.format(
+                                            'checkpoint-{}-{}-{}'.format(
                                                 self.model.__class__.__qualname__,
                                                 "epoch{:03d}".format(epoch),
                                                 self.config.learning_rate
