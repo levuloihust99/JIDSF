@@ -33,7 +33,7 @@ class NERProcessor(object):
         if torch.cuda.is_available():
             self.device = torch.device("cuda:{}".format(args.gpu_id))
             logger.info('There are %d GPU(s) available.' % torch.cuda.device_count())
-            logger.info('We will use the GPU:{}, {}'.format(torch.cuda.get_device_name(args.gpu_id), torch.cuda.get_device_capability(config.gpu_id)))
+            logger.info('We will use the GPU:{}, {}'.format(torch.cuda.get_device_name(args.gpu_id), torch.cuda.get_device_capability(args.gpu_id)))
         else:
             logger.info('No GPU available, using the CPU instead.')
             self.device = torch.device("cpu")
