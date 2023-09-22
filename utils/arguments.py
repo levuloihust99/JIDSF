@@ -32,7 +32,7 @@ def add_training_params(parser):
             return freq
 
     parser.add_argument('--do_eval', type=eval)
-    parser.add_argument('-save_freq', type=parse_save_freq)
+    parser.add_argument('--save_freq', type=parse_save_freq)
     parser.add_argument('--custom_train', type=eval)
     parser.add_argument('--train_batch_size', type=int)
     parser.add_argument('--eval_batch_size', type=int)
