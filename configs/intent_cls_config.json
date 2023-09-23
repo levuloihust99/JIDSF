@@ -1,12 +1,12 @@
 {
-    "data_path": "data/hackathon-2023-slu/augment/all_data.jsonl",
-    "train_indices_path": "data/hackathon-2023-slu/augment/train_indices.json",
-    "dev_indices_path": "data/hackathon-2023-slu/augment/dev_indices.json",
-    "tokenizer_path": "pretrained/vinai/phobert-base",
-    "tokenizer_type": "phobert",
-    "model_path": "pretrained/vinai/phobert-base",
-    "model_type": "phobert",
-    "max_seq_length": 256,
+    "data_path": "data/train_final_20230919.jsonl",
+    "train_indices_path": "data/ner/train_indices.json",
+    "dev_indices_path": "data/ner/dev_indices.json",
+    "tokenizer_path": "pretrained/NlpHUST/vibert4news-base-cased",
+    "tokenizer_type": "bert",
+    "model_path": "pretrained/NlpHUST/vibert4news-base-cased",
+    "model_type": "bert",
+    "max_seq_length": 512,
     "train_batch_size": 16,
     "eval_batch_size": 16,
     "weight_decay": 0.1,
@@ -20,5 +20,5 @@
     "warmup_steps": 0,
     "seed": 12345,
     "gpu_id": 0,
-    "checkpoint_dir": "checkpoints/intent_cls"
+    "checkpoint_dir": "checkpoints/IC"
 }
