@@ -238,10 +238,9 @@ class IntentClassifierTrainer:
         }
         eval_progress_bar = tqdm(desc="Batch", total=len(self.dev_data_loader))
         for batch in self.dev_data_loader:
-            batch = {k : v.to(self.device) for k, v in batch.items()}
-            batch_input_ids = batch["input_ids"]
-            batch_attention_mask = batch["attention_mask"]
-            batch_labels = batch["labels"]
+            batch_input_ids = batch["input_ids"].to(self.device)
+            batch_attention_mask = batch["attention_mask"].to(self.device)
+            batch_labels = batch["labels"].to(self.device)
 
             with torch.no_grad():
                 batch_outputs = self.model(
@@ -481,7 +480,7 @@ class IntentClassifierTrainer:
 
         if self.best_result == 0 or self.best_result < micro_eval["F1-score"]:
             output_dir = os.path.join(cfg.checkpoint_dir,
-                                    'checkpoint-{}-{}-{:.3f}'.format(self.model.__class__.__qualname__,
+                                    'checkpoint-{}-{}-{:.6f}'.format(self.model.__class__.__qualname__,
                                                                     cfg.learning_rate,
                                                                     micro_eval['F1-score']))
             if not os.path.exists(output_dir):
