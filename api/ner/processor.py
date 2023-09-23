@@ -1,17 +1,167 @@
-import re
 import torch
-import requests
 import logging
 
-import copy
-import unicodedata
-import unidecode
-import numpy as np
 from typing import Literal
 
 logger = logging.getLogger(__name__)
 
+def extract_entities(
+    text,
+    tokens,
+    labels,
+    architecture: Literal["bert", "roberta"]
+):
+    assert len(tokens) == len(labels)
+    if len(tokens) == 0:
+        return []
+    entities = []
+    idx = 0
+    current_label = None
+    current_idxs = []
+    prev_token_is_entity = False
 
+    while True:
+        label = labels[idx]
+        if label.startswith('B-'):
+            if prev_token_is_entity:
+                entities.append({
+                    'entity': current_label,
+                    'indexes': current_idxs
+                })
+                current_idxs = []
+            current_label = label[2:]
+            current_idxs.append(idx)
+            prev_token_is_entity = True
+            if idx == len(labels) - 1:
+                entities.append({
+                    'entity': current_label,
+                    'indexes': current_idxs
+                })
+        elif label.startswith('I-'):
+            if prev_token_is_entity:
+                current_idxs.append(idx)
+            if idx == len(labels) - 1 and prev_token_is_entity:
+                entities.append({
+                    'entity': current_label,
+                    'indexes': current_idxs,
+                })
+        else:
+            if prev_token_is_entity:
+                entities.append({
+                    'entity': current_label,
+                    'indexes': current_idxs
+                })
+                current_idxs = []
+                current_label = None
+                prev_token_is_entity = False
+
+        idx += 1
+        if idx == len(labels):
+            break
+
+    tokens = decode_subword_token(tokens, architecture)
+    space_ocurrences = spaces_determine(text)
+
+    L = len(text)
+    N = len(space_ocurrences)
+
+    positions, count = zip(*space_ocurrences)
+    count_accum = [sum(count[:idx]) for idx in range(1, N + 1)]
+    count_accum_pseudo = [0] + count_accum
+    boundaries = [0] + [positions[idx] - count_accum_pseudo[idx] for idx in range(N)] + [L]
+    intervals = [(boundaries[idx], boundaries[idx + 1]) for idx in range(0, N + 1)]
+
+    num_tokens = len(tokens)
+    token_lengths = [len(token) for token in tokens]
+    token_occurrences = [sum(token_lengths[:idx]) for idx in range(num_tokens)]
+
+    cache = {
+        "text": text,
+        "intervals": intervals,
+        "token_lengths": token_lengths,
+        "token_occurences": token_occurrences,
+        "count_accum_pseudo": count_accum_pseudo
+    }
+    entities = [align(entity, cache) for entity in entities]
+    return entities
+
+
+def align(entity, cache):
+    text = cache.get("text")
+    token_lengths = cache.get("token_lengths")
+    token_occurrences = cache.get("token_occurences")
+    count_accum_pseudo = cache.get("count_accum_pseudo")
+    intervals = cache.get("intervals")
+
+    token_indexes = entity["indexes"]
+    entity_token_occurences = [token_occurrences[idx] for idx in token_indexes]
+    entity_token_lengths = [token_lengths[idx] for idx in token_indexes]
+
+    try:
+        entity_start = entity_token_occurences[0]
+    except Exception:
+        pass
+    entity_start_resolved = (
+        entity_start + count_accum_pseudo[binary_search(intervals, entity_start)]
+    )
+    entity_end = entity_token_occurences[-1] + entity_token_lengths[-1] - 1
+    entity_end_resolved = (
+        entity_end + count_accum_pseudo[binary_search(intervals, entity_end)] + 1
+    )
+    entity = {
+        "entity": entity["entity"],
+        "start": entity_start_resolved,
+        "end": entity_end_resolved,
+        "value": text[entity_start_resolved : entity_end_resolved],
+        "indexes": token_indexes
+    }
+    return entity
+
+
+def binary_search(intervals, value):
+    start = 0
+    end = len(intervals)
+    while start <= end:
+        mid = (start + end) // 2
+        if intervals[mid][0] <= value < intervals[mid][1]:
+            return mid
+        if value < intervals[mid][0]:
+            end = mid - 1
+        elif value >= intervals[mid][1]:
+            start = mid + 1
+    return -1
+
+
+def decode_subword_token(tokens, architecture):
+    if architecture == "bert":
+        tokens = [token[2:] if token.startswith("##") else token for token in tokens]
+    elif architecture == "roberta":
+        tokens = [token[:-2] if token.endswith("@@") else token for token in tokens]
+    return tokens
+
+
+def spaces_determine(text):
+    space_occurences = []
+    is_previous_space = False
+    idx = 0
+    while idx < len(text):
+        if text[idx] == " ":
+            if not is_previous_space:
+                is_previous_space = True
+                pos = idx
+                count = 1
+            else:
+                count += 1
+                if idx == len(text) - 1:
+                    space_occurences.append((pos, count))
+        else:
+            if is_previous_space:
+                space_occurences.append((pos, count))
+            is_previous_space = False
+        idx += 1
+    if not space_occurences:
+        space_occurences = [(len(text), 0)]
+    return space_occurences
 
 
 class NERProcessor(object):
@@ -44,79 +194,6 @@ class NERProcessor(object):
     def segment(self, text):
         return self.segmenter.segment(text)
 
-    def extract_entities(
-        self,
-        tokens,
-        labels,
-    ):
-        assert len(tokens) == len(labels)
-        if len(tokens) == 0:
-            return []
-        entities = []
-        idx = 0
-        current_label = None
-        current_idxs = []
-        prev_token_is_entity = False
-
-        while True:
-            label = labels[idx]
-            if label.startswith('B-'):
-                if prev_token_is_entity:
-                    entities.append({
-                        'entity': current_label,
-                        'indexes': current_idxs
-                    })
-                    current_idxs = []
-                current_label = label[2:]
-                current_idxs.append(idx)
-                prev_token_is_entity = True
-                if idx == len(labels) - 1:
-                    entities.append({
-                        'entity': current_label,
-                        'indexes': current_idxs
-                    })
-            elif label.startswith('I-'):
-                if prev_token_is_entity and label[2:] == current_label:
-                    current_idxs.append(idx)
-                    if idx == len(labels) - 1:
-                        entities.append({
-                            'entity': current_label,
-                            'indexes': current_idxs,
-                        })
-                else:
-                    if prev_token_is_entity:
-                        entities.append({
-                            'entity': current_label,
-                            'indexes': current_idxs
-                        })
-                        current_idxs = []
-                        current_label = None
-                        prev_token_is_entity = False
-            else:
-                if prev_token_is_entity:
-                    entities.append({
-                        'entity': current_label,
-                        'indexes': current_idxs
-                    })
-                    current_idxs = []
-                    current_label = None
-                    prev_token_is_entity = False
-
-            idx += 1
-            if idx == len(labels):
-                break
-
-        out_entities = []
-        for entity in entities:
-            entity_tokens = [tokens[idx] for idx in entity["indexes"]]
-            entity_token_ids = self.tokenizer.convert_tokens_to_ids(entity_tokens)
-            entity_value = self.tokenizer.decode(entity_token_ids)
-            out_entities.append({
-                "entity": entity["entity"],
-                "value": entity_value
-            })
-        return out_entities
-
     def get_prediction(self, text):
         tokens = self.tokenizer.tokenize(text)
         tokens = [self.tokenizer.cls_token] + tokens + [self.tokenizer.sep_token]
@@ -138,17 +215,19 @@ class NERProcessor(object):
         return tokens[1:-1], predict_labels[1:-1] # ignore special tokens
 
     def extract(self, text):
+        architecture = "bert" if self.args.model_type == "bert" else "roberta"
+        input_text = text
         if self.segmenter:
             input_text = self.segment(text)
-        else:
-            input_text = text
         if self.args.lower:
             input_text = input_text.lower()
         tokens, labels = self.get_prediction(input_text)
-        entities = self.extract_entities(tokens, labels)
-        if self.segmenter:
-            for entity in entities:
+        entities = extract_entities(input_text, tokens, labels, architecture)
+        for entity in entities:
+            entity["value"] = input_text[entity["start"] : entity["end"]]
+            if self.segmenter:
                 entity["value"] = entity["value"].replace("_", " ")
+            entity.pop("indexes")
         return entities
 
     def extract_raw(self, text):
@@ -160,16 +239,3 @@ class NERProcessor(object):
             input_text = input_text.lower()
         tokens, labels = self.get_prediction(input_text)
         return tokens, labels
-
-
-class NERRuleExtractor(object):
-    def __init__(self, regexes):
-        self.regexes = regexes
-
-    def extract(self, text):
-        extracted_entities = []
-        for entity_name, regex in self.regexes.items():
-            entities = re.findall(regex, text)
-            entities = [{entity_name: entity} for entity in entities]
-            extracted_entities.extend(entities)
-        return extracted_entities
