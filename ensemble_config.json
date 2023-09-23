@@ -1,0 +1,6 @@
+{
+    "model_type": "bert",
+    "models": [
+        "checkpoints/checkpoint-BertPosTagger-5e-05-0.994814"
+    ]
+}

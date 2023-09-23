@@ -1,6 +1,7 @@
 {
     "ner-hackathon-2023": {
-        "train": "data/hackathon-slu-2023/ner/split/train_data.csv",
-        "dev": "data/hackathon-slu-2023/ner/split/dev_data.csv"
+        "all": "data/ner/all.jsonl",
+        "train_indices": "data/ner/train_indices.json",
+        "dev_indices": "data/ner/dev_indices.json"
     }
 }

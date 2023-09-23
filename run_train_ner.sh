@@ -1,0 +1,19 @@
+source .venv/bin/activate; python train_ner.py \
+    --model_path pretrained/NlpHUST/vibert4news-base-cased \
+    --tokenizer_path pretrained/NlpHUST/vibert4news-base-cased \
+    --model_save checkpoints \
+    --data ner-hackathon-2023 \
+    --train_batch_size 16 \
+    --eval_batch_size 16 \
+    --save_checkpoints True \
+    --max_seq_length 512 \
+    --pool_type concat \
+    --warmup_proportion 0.05 \
+    --ignore_index 0 \
+    --num_hidden_layer 1 \
+    --add_special_tokens True \
+    --use_word_segmenter False \
+    --seed 12345 \
+    --gpu_id 0 \
+    --do_eval True \
+    --save_freq epoch

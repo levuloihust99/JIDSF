@@ -29,9 +29,9 @@ def separate_punctuation(words: List[Tuple[Text, Text]]):
 
 def create_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_path", "-i", required=True,
+    parser.add_argument("--input_path", "-i", default="data/train_final_20230919.jsonl",
                         help="Path to the original data of Hackathon SLU 2023")
-    parser.add_argument("--output_path", "-o", required=True)
+    parser.add_argument("--output_path", "-o", default="data/ner/all.jsonl")
     return parser
 
 

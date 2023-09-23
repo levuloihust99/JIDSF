@@ -1,7 +1,8 @@
+import copy
 import torch
 import logging
 
-from typing import Literal
+from typing import Literal, List, Dict, Text, Any
 
 logger = logging.getLogger(__name__)
 
@@ -214,28 +215,28 @@ class NERProcessor(object):
 
         return tokens[1:-1], predict_labels[1:-1] # ignore special tokens
 
-    def extract(self, text):
+    def pre_extract(self, text):
         architecture = "bert" if self.args.model_type == "bert" else "roberta"
         input_text = text
         if self.segmenter:
             input_text = self.segment(text)
         if self.args.lower:
             input_text = input_text.lower()
+        return input_text, architecture
+
+    def extract(self, text):
+        input_text, architecture = self.pre_extract(text)
         tokens, labels = self.get_prediction(input_text)
         entities = extract_entities(input_text, tokens, labels, architecture)
+        entities = self.post_extract(input_text, entities)
+        return entities
+
+    def post_extract(self, text, entities: List[Dict[Text, Any]]):
+        entities = copy.deepcopy(entities)
         for entity in entities:
-            entity["value"] = input_text[entity["start"] : entity["end"]]
+            entity["value"] = text[entity["start"] : entity["end"]]
             if self.segmenter:
                 entity["value"] = entity["value"].replace("_", " ")
             entity.pop("indexes")
         return entities
 
-    def extract_raw(self, text):
-        if self.segmenter:
-            input_text = self.segment(text)
-        else:
-            input_text = text
-        if self.args.lower:
-            input_text = input_text.lower()
-        tokens, labels = self.get_prediction(input_text)
-        return tokens, labels

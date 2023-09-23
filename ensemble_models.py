@@ -3,7 +3,7 @@ import json
 import logging
 import argparse
 
-from typing import Text
+from typing import Text, List
 
 from transformers import (
     BertTokenizer,
@@ -11,7 +11,7 @@ from transformers import (
 )
 
 from utils.data_utils import WordSegmenter
-from api.ner.processor import NERProcessor
+from api.ner.processor import NERProcessor, extract_entities
 from utils.logging_utils import add_color_formatter
 from model.modeling import (
     BertPosTagger,
@@ -58,13 +58,14 @@ def main():
     parser.add_argument("--segment", type=eval, default=False)
     parser.add_argument("--lower", default=False, action="store_true")
     parser.add_argument("--segment_endpoint", default="http://localhost:8088/segment")
-    parser.add_argument("--data_path", "-i", default="final/data/asr_output/asr_output_norm_duyanh.json")
-    parser.add_argument("--output_path", "-o", default="final/results/NER.jsonl")
+    parser.add_argument("--data_path", "-i", required=True)
+    parser.add_argument("--output_path", "-o", default="results/NER.jsonl")
     parser.add_argument("--debug", default=False, action="store_true")
     args = parser.parse_args()
 
     with open(args.config_file) as reader:
         config = json.load(reader)
+    setattr(args, "model_type", config["model_type"])
     tokenizer = load_tokenizer(config["model_type"], config["models"][0])
     models = []
     for model_path in config["models"]:
@@ -78,7 +79,7 @@ def main():
     else:
         word_segmenter = None
 
-    processors = []
+    processors: List[NERProcessor] = []
     logger.info("Loading models to ensemble...")
     for model in models:
         processors.append(
@@ -99,8 +100,8 @@ def main():
         out_item["file"] = item["file_name"]
         ensemble_input = []
         for processor in processors:
-            entities = processor.extract_raw(item["norm"])
-            ensemble_input.append(entities)
+            text, architecture = processor.pre_extract(item["norm"])
+            ensemble_input.append(processor.get_prediction(text))
         
         votes = []
         for _ in range(len(ensemble_input[0][0])):
@@ -113,10 +114,11 @@ def main():
             counter = Counter(vote)
             sorted_counter = sorted(list(counter.items()), key=lambda x: x[1], reverse=True)
             ensemble_labels.append(sorted_counter[0][0])
-        ensemble_results = processors[0].extract_entities(tokens, ensemble_labels)
+        entities = extract_entities(text, tokens, ensemble_labels, architecture)
+        entities = processors[0].post_extract(text, entities)
 
         out_entities = []
-        for entity in ensemble_results:
+        for entity in entities:
             if word_segmenter:
                 entity["value"] = entity["value"].replace("_", " ")
             if not args.debug:
@@ -125,7 +127,11 @@ def main():
                 out_entities.append(entity)
         out_item["entities"] = out_entities
         out_data.append(out_item)
-        print("Done #{}".format(idx))
+        logger.info("Done #{}".format(idx))
+    
+    output_dir = os.path.dirname(args.output_path)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     with open(args.output_path, "w") as writer:
         for item in out_data:
             writer.write(json.dumps(item, ensure_ascii=False) + "\n")
