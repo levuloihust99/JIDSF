@@ -11,4 +11,4 @@ RUN apt update && \
 RUN python3 -m venv .venv
 ENV PATH=$PWD/.venv/bin:$PATH
 
-RUN pip install -U pip; pip install -r requirements.txt
+RUN pip install -U pip && pip install -r requirements.txt
