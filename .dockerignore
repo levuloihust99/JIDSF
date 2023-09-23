@@ -1,0 +1,13 @@
+asr_output_base_segmented.jsonl
+.dockerignore
+.venv/
+.vscode/
+**__pycache__/
+results/
+data/train_final_20230919_segmented.jsonl
+data/ner/train_indices_sample.json
+debug.py
+Dockerfile
+get_asr_data.py
+segment_text.py
+train_IC
