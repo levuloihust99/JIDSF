@@ -1,0 +1,1 @@
+!source .venv/bin/activate; python train_intent_classifier.py
