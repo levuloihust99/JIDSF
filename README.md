@@ -40,7 +40,7 @@ To successfully run this command, we need ASR output to be placed at `results/as
 bash train_IC.sh
 ```
 
-Running this command performs NER training. On our computer, we got a checkpoint `checkpoints/IC/checkpoint-BertForSequenceClassification-5e-05-0.995729`. We provide this checkpoint for reproducibility.
+Running this command performs intent classifier training. On our computer, we got a checkpoint `checkpoints/IC/checkpoint-BertForSequenceClassification-5e-05-0.995729`. We provide this checkpoint for reproducibility.
 
 ## Step 2. Infer
 
@@ -50,7 +50,7 @@ bash run_infer_IC.sh
 
 To successfully run this command, we need ASR output to be placed at `results/asr_output_norm.json`. After running this command, a file `results/intent_classification.jsonl` is generated.
 
-## Step 4. Merge 
+# Submission
 
 ```shell
 python merge_result.py
