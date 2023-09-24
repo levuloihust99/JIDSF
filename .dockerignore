@@ -11,3 +11,6 @@ Dockerfile
 get_asr_data.py
 segment_text.py
 train_IC
+.git/
+plugins/
+create_augment_NER.py
