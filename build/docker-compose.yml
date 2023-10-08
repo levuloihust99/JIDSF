@@ -1,0 +1,19 @@
+version: '3.0'
+services:
+  ner:
+    image: cistailab/ner:v1.0.0
+    container_name: ner_cmcati
+    ports:
+      - "5577:5577"
+    volumes:
+      - ../checkpoints/cmcati:/app/checkpoints/cmcati
+    entrypoint: [".venv/bin/python3", "-m", "api.serve"]
+    command: ["--model_type", "bert", "--model_path", "checkpoints/cmcati/checkpoint-BertPosTagger-5e-05-0.911", "--segment_endpoint", "http://segmenter:8088/segment"]
+
+  segmenter:
+    image: cistailab/wordsegmenter:v1.0.0
+    container_name: wordsegmenter_cmcati
+
+networks:
+  default:
+    name: nernet

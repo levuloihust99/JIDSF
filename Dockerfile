@@ -1,8 +1,8 @@
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+FROM python:3.8-slim-buster
 
 WORKDIR /app
 
-COPY . .
+COPY requirements.txt .
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update && \
@@ -10,3 +10,6 @@ RUN apt update && \
 
 RUN python3 -m venv .venv
 RUN . .venv/bin/activate; pip install -U pip; pip install --no-deps -r requirements.txt
+COPY . .
+
+ENTRYPOINT [ "bash" ]
