@@ -139,8 +139,8 @@ class IntentClassifierTrainer:
                             self.config.checkpoint_dir,
                             "checkpoint-{}-{}-{}".format(
                                 self.model.__class__.__qualname__,
-                                "step{:07d}".format(iteration + 1),
-                                self.config.learning_rate
+                                self.config.learning_rate,
+                                "step{:07d}-loss_{:.7f}".format(iteration + 1, loss.item()),
                             )
                         )
                     )
