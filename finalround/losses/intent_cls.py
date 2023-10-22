@@ -14,7 +14,8 @@ class InbatchLossCalculator:
         sample_embs: torch.Tensor,
         intent_labels: torch.Tensor
     ):
-        intent_loss = F.nll_loss(intent_logits, intent_labels.repeat(2), reduction="mean")
+        intent_log_probs = F.log_softmax(intent_logits, dim=-1)
+        intent_loss = F.nll_loss(intent_log_probs, intent_labels.repeat(2), reduction="mean")
 
         hidden_size = sample_embs.size(-1)
         sample_embs = sample_embs.view(2, -1, hidden_size)
@@ -44,5 +45,5 @@ class InbatchLossCalculator:
     def normalize(self, embs: torch.Tensor):
         # embs: [bsz, hidden_size]
         if self.metrics == "cosine":
-            return embs / F.normalize(embs, dim=-1)
+            return F.normalize(embs, dim=-1)
         return embs

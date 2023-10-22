@@ -325,6 +325,7 @@ class IntentClassifierTrainer:
         )
         if self.config.only_save_better:
             if self.best_result == 0 or self.best_result < eval_score:
+                self.best_result = eval_score
                 self.save_checkpoint(output_dir)
                 output_eval_file = os.path.join(output_dir, "eval_results.txt")
                 with open(output_eval_file, "w") as writer:
