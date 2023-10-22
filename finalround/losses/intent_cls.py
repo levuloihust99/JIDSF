@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class InbatchLossCalculator:
-    def __init__(self, intent_embs: torch.Tensor, metrics: Text = "cosine", scale_factor: float = 1.0):
+    def __init__(self, metrics: Text = "cosine", scale_factor: float = 1.0):
         self.metrics = metrics
         self.scale_factor = scale_factor
 

@@ -96,7 +96,6 @@ class IntentClassifierTrainer:
 
         # loss calculator
         self.loss_calculator = InbatchLossCalculator(
-            intent_embs=self.model.classifier.weight,
             metrics=config.sim_func,
             scale_factor=config.scale_cosine_factor
         )
@@ -110,7 +109,6 @@ class IntentClassifierTrainer:
         self.model.train()
         data_iterator = iter(self.dataloader)
         progress_bar = tqdm(total=self.config.total_updates, desc="Iteration")
-        encoder = self.model.get_encoder()
         for iteration in range(self.config.total_updates):
             batch = next(data_iterator)
             batch = {k: v.to(self.device) for k, v in batch.items()}

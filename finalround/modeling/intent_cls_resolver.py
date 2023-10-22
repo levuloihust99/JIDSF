@@ -1,4 +1,4 @@
-from .intent_cls import BertIntentClassifier
+from .intent_cls import BertIntentClassifier, RobertaIntentClassifier
 
 from transformers import AutoModel
 
@@ -6,6 +6,8 @@ from transformers import AutoModel
 def resolve_intent_cls_model_class(model_type):
     if model_type == "bert":
         return BertIntentClassifier
+    if model_type == "roberta":
+        return RobertaIntentClassifier
     if model_type == "auto":
         return AutoModel
 
