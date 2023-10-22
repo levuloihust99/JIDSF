@@ -23,7 +23,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--only_save_better", type=eval)
     parser.add_argument("--weight_decay", type=float)
     parser.add_argument("--learning_rate", type=float)
-    parser.add_argument("--adam_epsilon", default=1e-8)
+    parser.add_argument("--adam_epsilon", type=float)
     parser.add_argument("--total_updates", type=int)
     parser.add_argument("--warmup_proportion", type=float)
     parser.add_argument("--max_grad_norm", type=float)
