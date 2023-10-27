@@ -17,6 +17,8 @@ from model.modeling import (
     BertPosTagger,
     PhoBertPosTagger
 )
+from finalround.modeling.ner_cont import BertNERCont
+from finalround.configuration.ner_cont import NERContConfig
 from collections import Counter
 
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +48,15 @@ def load_model(model_type: Text, model_path: Text):
         model = PhoBertPosTagger.from_pretrained(model_path, ner_args)
     elif model_type == "bert":
         model = BertPosTagger.from_pretrained(model_path, ner_args)
+    elif model_type == "bert_cont":
+        config = NERContConfig(**training_config)
+        with open(os.path.join(model_path, "label_mappings.json"), "r") as reader:
+            label_mappings = json.load(reader)
+        model = BertNERCont.from_pretrained(
+            model_path,
+            num_labels=len(label_mappings),
+            add_pooling_layer=config.add_pooling_layer
+        )
     else:
         raise ModelTypeNotSupported("The model of type '{}' is not supported.".format(model_type))
     return model
@@ -54,6 +65,8 @@ def load_model(model_type: Text, model_path: Text):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_file", default="ensemble_config.json")
+    parser.add_argument("--tokenizer_type", default="bert")
+    parser.add_argument("--tokenizer_path", default="NlpHUST/vibert4news-base-cased")
     parser.add_argument("--gpu_id", type=int, default=0)
     parser.add_argument("--segment", type=eval, default=False)
     parser.add_argument("--lower", default=False, action="store_true")
@@ -66,7 +79,7 @@ def main():
     with open(args.config_file) as reader:
         config = json.load(reader)
     setattr(args, "model_type", config["model_type"])
-    tokenizer = load_tokenizer(config["model_type"], config["models"][0])
+    tokenizer = load_tokenizer(args.tokenizer_type, args.tokenizer_path)
     models = []
     for model_path in config["models"]:
         models.append(load_model(config["model_type"], model_path))
@@ -130,7 +143,7 @@ def main():
         logger.info("Done #{}".format(idx))
     
     output_dir = os.path.dirname(args.output_path)
-    if not os.path.exists(output_dir):
+    if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
     with open(args.output_path, "w") as writer:
         for item in out_data:

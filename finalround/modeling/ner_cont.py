@@ -56,7 +56,9 @@ class BertNERCont(BertPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=True,
         )
-        return outputs.last_hidden_state
+        sequence_output = outputs.last_hidden_state
+        slot_logits = torch.matmul(sequence_output, self.label_embeddings)
+        return (slot_logits,)
 
 
 class RobertaIntentClassifier(RobertaPreTrainedModel):

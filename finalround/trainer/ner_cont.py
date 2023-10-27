@@ -135,13 +135,16 @@ class NERContTrainer:
         self.best_result = 0
         data_iterator = iter(self.dataloader)
         progress_bar = tqdm(total=self.config.total_updates, desc="Step")
+        encoder = self.model.get_encoder()
         for step in range(self.config.total_updates):
             batch = next(data_iterator)
             batch = {k: v.to(self.device) for k, v in batch.items()}
-            token_embeddings = self.model(
+            outputs = encoder(
                 input_ids=batch["input_ids"],
-                attention_mask=batch["attention_mask"]
+                attention_mask=batch["attention_mask"],
+                return_dict=True
             )
+            token_embeddings = outputs.last_hidden_state
             active_mask = batch["attention_mask"].view(-1) == 1
             active_embeddings = token_embeddings.view(-1, self.model.config.hidden_size)[active_mask]
             active_labels = batch["labels"].view(-1)[active_mask]
@@ -177,14 +180,18 @@ class NERContTrainer:
         y_true = []
         y_pred = []
 
+        encoder = self.model.get_encoder()
+
         for batch in self.dev_dataloader:
             batch = {k: v.to(self.device) for k, v in batch.items()}
 
             with torch.no_grad():
-                sequence_output = self.model(
+                outputs = encoder(
                     input_ids=batch["input_ids"],
-                    attention_mask=batch["attention_mask"]
+                    attention_mask=batch["attention_mask"],
+                    return_dict=True
                 )
+                sequence_output = outputs.last_hidden_state
             batch_logits = torch.matmul(sequence_output, self.model.label_embeddings)
             batch_preds = torch.argmax(batch_logits, dim=-1)
             
