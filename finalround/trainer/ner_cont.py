@@ -84,6 +84,7 @@ class NERContTrainer:
         self.model = resolve_ner_cont_model(
             config.model_type, config.model_path, num_labels=len(name_id_mapping), add_pooling_layer=config.add_pooling_layer
         )
+        self.model.to(self.device)
 
         self.dataloader = NERContDataloader(
             data=train_data,
@@ -102,6 +103,7 @@ class NERContTrainer:
                 data=dev_data,
                 tokenizer=self.tokenizer,
                 name_id_mapping=name_id_mapping,
+                bsz=config.eval_batch_size,
                 max_seq_len=config.max_seq_length,
                 training=False
             )
@@ -127,8 +129,6 @@ class NERContTrainer:
             ignore_index=config.ignore_index,
             pad_label_id=name_id_mapping["-PAD-"]
         )
-
-        self.model.to(self.device)
 
     def train(self):
         logger.info("Start training...")
