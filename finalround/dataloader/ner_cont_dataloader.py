@@ -27,7 +27,6 @@ class NERContDataloader:
             self.load_data(data)
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
-        self.device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
         self.name_id_mapping = name_id_mapping
         self.id_name_mapping = {v: k for k, v in name_id_mapping.items()}
         self.tokenize_dataset()
@@ -106,9 +105,9 @@ class NERContDataloader:
                 padded_batch_attn_mask.append(attn_mask)
                 padded_batch_label_ids.append(padded_label_ids)
             
-            batch_input_tensor = torch.tensor(padded_batch_input_ids).to(self.device)
-            batch_attn_mask_tensor = torch.tensor(padded_batch_attn_mask).to(self.device)
-            batch_label_ids_tensor = torch.tensor(padded_batch_label_ids).to(self.device)
+            batch_input_tensor = torch.tensor(padded_batch_input_ids)
+            batch_attn_mask_tensor = torch.tensor(padded_batch_attn_mask)
+            batch_label_ids_tensor = torch.tensor(padded_batch_label_ids)
 
             yield {
                 "input_ids": batch_input_tensor,
@@ -134,7 +133,6 @@ class NERSequenceDataloader:
         self.name_id_mapping = name_id_mapping
         self.max_seq_len = max_seq_len
         self.training = training
-        self.device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
         self.tokenize_dataset()
         dataset = Dataset.from_list(self.data)
         self.dataloader = DataLoader(
@@ -201,9 +199,9 @@ class NERSequenceDataloader:
             batch_label_ids.append(label_ids)
         
         return {
-            "input_ids": torch.tensor(batch_input_ids).to(self.device),
-            "attention_mask": torch.tensor(batch_attn_mask).to(self.device),
-            "labels": torch.tensor(batch_label_ids).to(self.device)
+            "input_ids": torch.tensor(batch_input_ids),
+            "attention_mask": torch.tensor(batch_attn_mask),
+            "labels": torch.tensor(batch_label_ids)
         }
 
     def __iter__(self):

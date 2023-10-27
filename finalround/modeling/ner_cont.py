@@ -19,7 +19,8 @@ class BertNERCont(BertPreTrainedModel):
         self.add_pooling_layer = add_pooling_layer
         self.bert = BertModel(config, add_pooling_layer=add_pooling_layer)
         embedding_std = kwargs.get("embedding_std", 0.5)
-        self.label_embeddings = torch.empty(config.hidden_size, config.num_labels).uniform_(-embedding_std, embedding_std).requires_grad_()
+        self.label_embeddings = torch.nn.Parameter(
+            torch.empty(config.hidden_size, config.num_labels).uniform_(-embedding_std, embedding_std).requires_grad_())
 
         # Initialize weights and apply final processing
         self.post_init()
