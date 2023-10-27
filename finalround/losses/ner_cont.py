@@ -76,6 +76,8 @@ class NERContLoss:
         """
         bsz = query_embs.size(0)
         sim_score = torch.matmul(query_embs, resp_embs if b_transposed else resp_embs.transpose(0, 1))
+        if self.scale_factor != 1.0:
+            sim_score *= self.scale_factor
         log_probs = torch.nn.functional.log_softmax(sim_score, dim=-1)
         loss = torch.nn.functional.nll_loss(log_probs, torch.arange(bsz).to(query_embs.device), reduction="mean")
         return loss
