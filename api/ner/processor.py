@@ -3,6 +3,13 @@ import torch
 import logging
 
 from typing import Literal, List, Dict, Text, Any
+from finalround.modeling.ner_cont import BertNERCont
+from transformers.models.bert.tokenization_bert import BasicTokenizer
+basic_tokenizer = BasicTokenizer(
+    do_lower_case=True,
+    strip_accents=False,
+    do_split_on_punc=True
+)
 
 logger = logging.getLogger(__name__)
 
@@ -216,8 +223,9 @@ class NERProcessor(object):
         return tokens[1:-1], predict_labels[1:-1] # ignore special tokens
 
     def pre_extract(self, text):
-        architecture = "bert" if self.args.model_type == "bert" else "roberta"
+        architecture = "bert" if "bert" in self.args.model_type else "roberta"
         input_text = text
+        input_text = " ".join(basic_tokenizer.tokenize(input_text))
         if self.segmenter:
             input_text = self.segment(text)
         if self.args.lower:

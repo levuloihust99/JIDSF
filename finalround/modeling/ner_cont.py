@@ -62,18 +62,24 @@ class BertNERCont(BertPreTrainedModel):
         return (slot_logits,)
 
 
-class RobertaIntentClassifier(RobertaPreTrainedModel):
-    def __init__(self, config, **kwargs):
+class RobertaNERCont(RobertaPreTrainedModel):
+    def __init__(self, config, add_pooling_layer: bool = False, **kwargs):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.config = config
 
-        self.roberta = RobertaModel(config, add_pooling_layer=False)
-        self.classifier = RobertaClassificationHead(config)
+        self.add_pooling_layer = add_pooling_layer
+        self.roberta = RobertaModel(config, add_pooling_layer=add_pooling_layer)
+        embedding_std = kwargs.get("embedding_std", 0.5)
+        self.label_embeddings = torch.nn.Parameter(
+            torch.empty(config.hidden_size, config.num_labels).uniform_(-embedding_std, embedding_std).requires_grad_())
 
         # Initialize weights and apply final processing
         self.post_init()
 
+    def get_encoder(self) -> nn.Module:
+        return self.roberta
+    
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -87,10 +93,8 @@ class RobertaIntentClassifier(RobertaPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
     ):
         r"""
-        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
-            config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
-            `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the token classification loss. Indices should be in `[0, ..., config.num_labels - 1]`.
         """
         outputs = self.roberta(
             input_ids,
@@ -104,7 +108,5 @@ class RobertaIntentClassifier(RobertaPreTrainedModel):
             return_dict=True,
         )
         sequence_output = outputs.last_hidden_state
-        pooled_output = sequence_output[:, 0, :]
-        logits = self.classifier(sequence_output)
-
-        return logits, pooled_output
+        slot_logits = torch.matmul(sequence_output, self.label_embeddings)
+        return (slot_logits,)

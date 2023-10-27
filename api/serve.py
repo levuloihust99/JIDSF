@@ -24,6 +24,8 @@ from model.modeling import (
     BertPosTagger,
     PhoBertPosTagger
 )
+from finalround.modeling.ner_cont import BertNERCont, RobertaNERCont
+from finalround.configuration.ner_cont import NERContConfig
 
 app = Sanic(__name__)
 CORS(app)
@@ -56,6 +58,24 @@ def load_model(model_type: Text, model_path: Text):
         model = PhoBertPosTagger.from_pretrained(model_path, ner_args)
     elif model_type == "bert":
         model = BertPosTagger.from_pretrained(model_path, ner_args)
+    elif model_type == "bert_cont":
+        config = NERContConfig(**training_config)
+        with open(os.path.join(model_path, "label_mappings.json"), "r") as reader:
+            label_mappings = json.load(reader)
+        model = BertNERCont.from_pretrained(
+            model_path,
+            num_labels=len(label_mappings),
+            add_pooling_layer=config.add_pooling_layer
+        )
+    elif model_type == "roberta_cont":
+        config = NERContConfig(**training_config)
+        with open(os.path.join(model_path, "label_mappings.json"), "r") as reader:
+            label_mappings = json.load(reader)
+        model = RobertaNERCont.from_pretrained(
+            model_path,
+            num_labels=len(label_mappings),
+            add_pooling_layer=config.add_pooling_layer
+        )
     else:
         raise ModelTypeNotSupported("The model of type '{}' is not supported.".format(model_type))
     return model
@@ -83,8 +103,10 @@ async def extract_entities(request):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=5577)
-    parser.add_argument("--model_type", default="phobert")
-    parser.add_argument("--model_path", default="vinai/phobert-base")
+    parser.add_argument("--model_type", default="bert")
+    parser.add_argument("--model_path", default="NlpHUST/vibert4news-base-cased")
+    parser.add_argument("--tokenizer_type", default="bert")
+    parser.add_argument("--tokenizer_path", default="NlpHUST/vibert4news-base-cased")
     parser.add_argument("--gpu_id", type=int, default=0)
     parser.add_argument("--segment", type=eval, default=False)
     parser.add_argument("--lower", default=False, action="store_true")
@@ -92,8 +114,8 @@ def main():
     args = parser.parse_args()
 
     tokenizer = load_tokenizer(
-        tokenizer_type=args.model_type,
-        tokenizer_path=args.model_path
+        tokenizer_type=args.tokenizer_type,
+        tokenizer_path=args.tokenizer_path
     )
     model = load_model(
         model_type=args.model_type,

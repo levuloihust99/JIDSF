@@ -17,7 +17,7 @@ from model.modeling import (
     BertPosTagger,
     PhoBertPosTagger
 )
-from finalround.modeling.ner_cont import BertNERCont
+from finalround.modeling.ner_cont import BertNERCont, RobertaNERCont
 from finalround.configuration.ner_cont import NERContConfig
 from collections import Counter
 
@@ -53,6 +53,15 @@ def load_model(model_type: Text, model_path: Text):
         with open(os.path.join(model_path, "label_mappings.json"), "r") as reader:
             label_mappings = json.load(reader)
         model = BertNERCont.from_pretrained(
+            model_path,
+            num_labels=len(label_mappings),
+            add_pooling_layer=config.add_pooling_layer
+        )
+    elif model_type == "roberta":
+        config = NERContConfig(**training_config)
+        with open(os.path.join(model_path, "label_mappings.json"), "r") as reader:
+            label_mappings = json.load(reader)
+        model = RobertaNERCont.from_pretrained(
             model_path,
             num_labels=len(label_mappings),
             add_pooling_layer=config.add_pooling_layer
