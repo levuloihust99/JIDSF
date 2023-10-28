@@ -154,7 +154,7 @@ class NERTrainer(object):
                         output_dir = os.path.join(self.checkpoint_dir,
                                                 'checkpoint-{}-{}-{}'.format(
                                                     self.model.__class__.__qualname__,
-                                                    "step{:07d}".format(global_step),
+                                                    "step{:07d}-loss_{:.7f}".format(global_step, batch_loss.item()),
                                                     self.config.learning_rate
                                                 ))
                         self.save_checkpoint(output_dir)
