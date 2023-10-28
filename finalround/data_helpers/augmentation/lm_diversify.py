@@ -1,0 +1,497 @@
+import time
+import copy
+import json
+import torch
+import random
+import logging
+import argparse
+import torch.nn.functional as F
+
+from tqdm import tqdm
+from pathlib import Path
+from typing import Text, List, Dict, Any
+from transformers import BertForMaskedLM, RobertaForMaskedLM, BertTokenizer, PhobertTokenizer
+from transformers.models.bert.tokenization_bert import BasicTokenizer
+
+from utils.logging_utils import add_color_formatter
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+add_color_formatter(logging.root)
+
+basic_tokenizer = BasicTokenizer(
+    do_lower_case=True,
+    strip_accents=False,
+    do_split_on_punc=True
+)
+
+from finalround.utils.vietnamese_words.trie import Trie
+from utils.utils import setup_random
+
+RANDOM_SEED = 12345
+VIETNAMESE_WORDS_PATH = "finalround/utils/vietnamese_words/assets/words.txt"
+DATA_PATH = "final/data/ner/all.jsonl"
+OUTPUT_PATH = "onboard/data/ner/lm_augmented/all_lm_augmented.jsonl"
+TRACKING_FILE = "onboard/data/ner/lm_augmented/tracker.json"
+
+
+def load_data():
+    data = []
+    with open(DATA_PATH, "r") as reader:
+        for line in reader:
+            data.append(json.loads(line.strip()))
+    return data
+
+
+def load_bert4news():
+    tokenizer = BertTokenizer.from_pretrained("NlpHUST/vibert4news-base-cased")
+    model = BertForMaskedLM.from_pretrained("NlpHUST/vibert4news-base-cased")
+    model.eval()
+    return tokenizer, model
+
+
+def load_phobert():
+    tokenizer = PhobertTokenizer.from_pretrained("vinai/phobert-base")
+    model = RobertaForMaskedLM.from_pretrained("vinai/phobert-base")
+    model.eval()
+    return tokenizer, model
+
+
+def get_all_idxs_sequence(*dims):
+    if not dims:
+        return [tuple()]
+    follow_idxs_sequence = get_all_idxs_sequence(*dims[1:])
+    all_idxs_sequence = []
+    for i in range(dims[0]):
+        for idxs in follow_idxs_sequence:
+            all_idxs_sequence.append((i,) + idxs)
+    return all_idxs_sequence
+
+
+class Diversifier:
+    def __init__(self, trie: Trie, type: Text = "bert4news"):
+        if type == "bert4news":
+            tokenizer, model = load_bert4news()
+        else:
+            tokenizer, model = load_phobert()
+        self.tokenizer = tokenizer
+        self.model = model
+        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        self.model.to(self.device)
+        self.trie = trie
+        self.avail_words = self.trie.get_entities()
+        self.exclude_words = [
+            "tăng", "giảm", "kiểm", "tra", "bật", "mở", "đóng", "tắt",
+            "tiệc", "tắm", "phòng", "sân", "hiên", "vườn", "thang",
+            "riêng", "tư", "sảnh", "giặt", "bếp", "đèn", "giãn"
+        ]
+
+    def diversify(self, data):
+        with open(TRACKING_FILE) as reader:
+            tracker = json.load(reader)
+        running_idx = tracker["running_idx"]
+        with open(OUTPUT_PATH, "a") as writer:
+            for idx, item in enumerate(tqdm(data)):
+                if idx < running_idx:
+                    continue
+                iteration_variants = None
+                try:
+                    tagged_sequence = list(zip(item["tokens"], item["labels"]))
+                    variants = self.text_diversify(tagged_sequence)
+                    for idx, variant in enumerate(variants):
+                        variants[idx] = {"file": item["file"], **variant}
+                    iteration_variants = variants
+                except Exception as e:
+                    with open(TRACKING_FILE, "w") as writer:
+                        json.dump({"running_idx": idx})
+                    logger.error(e)
+                else:
+                    for variant in iteration_variants:
+                        writer.write(json.dumps(variant, ensure_ascii=False) + "\n")
+
+    def text_diversify(self, tagged_sequence):
+        added_token_variant = self.add_lm_token(tagged_sequence)
+        replaced_token_variant = self.replace_lm_token(tagged_sequence)
+        replaced_entity_variant = self.replace_entity(tagged_sequence)
+        swap_variant = self.token_swap(tagged_sequence)
+        noise_word_variant = self.add_noise_word(tagged_sequence)
+        replace_by_noise_variant = self.replace_by_noise_word(tagged_sequence)
+        augmented_sequences = [
+            {
+                "tagged_sequence": tagged_sequence,
+                "variant": "origin"
+            },
+            *added_token_variant,
+            *replaced_token_variant,
+            *replaced_entity_variant,
+            *swap_variant,
+            *noise_word_variant,
+            *replace_by_noise_variant
+        ]
+        return augmented_sequences
+
+    def replace_mask_token(
+        self,
+        augmented_tokens,
+        masked_words = None,
+        topk: int = 10,
+        force_replace: bool = False,
+        should_exclude: bool = False
+    ):
+        """`augmented_tokens` have mask tokens"""
+
+        augmented_tokens = copy.deepcopy(augmented_tokens)
+        subword_tokens = []
+        for token in augmented_tokens:
+            subword_tokens.extend(self.tokenizer.tokenize(token))
+        subword_tokens = [self.tokenizer.cls_token] + subword_tokens + [self.tokenizer.sep_token]
+        input_ids = self.tokenizer.convert_tokens_to_ids(subword_tokens)
+        input_ids = torch.tensor([input_ids]).to(self.device)
+
+        with torch.no_grad():
+            outputs = self.model(input_ids, return_dict=True)
+        logits = outputs.logits.squeeze() # [seq_len, vocab_size]
+        log_probs = F.log_softmax(logits, dim=-1)
+        active_mask = input_ids.squeeze().eq(self.tokenizer.mask_token_id) # [seq_len]
+        if force_replace:
+            mask_idxs = active_mask.nonzero().squeeze(dim=-1).tolist()
+            mask_idxs = [(i, idx) for i, idx in enumerate(mask_idxs)]
+            i, selected_mask_idx = random.choice(mask_idxs)
+            try:
+                masked_id = self.tokenizer.convert_tokens_to_ids([masked_words[i]])[0]
+                log_probs[selected_mask_idx, masked_id] = -1e20
+            except Exception as e:
+                logger.error(e)
+        
+        if should_exclude:
+            for word in self.exclude_words:
+                try:
+                    masked_id = self.tokenizer.convert_tokens_to_ids([word])[0]
+                    log_probs[:, masked_id] = -1e20
+                except Exception as e:
+                    logger.error(e)
+
+        scores, vocab_indices = torch.topk(log_probs, topk, dim=-1) # [seq_len, topk]
+        all_mask_pred_cands = vocab_indices[active_mask] # [num_mask, topk]
+        all_mask_scores = scores[active_mask] # [num_mask, topk]
+        idxs_sequence = get_all_idxs_sequence(*([topk] * all_mask_scores.size(0)))
+        cand_sequence = []
+        for seq in idxs_sequence:
+            seq_score = 0.0
+            seq_token_ids = []
+            for i, j in enumerate(seq):
+                seq_score += all_mask_scores[i][j].item()
+                seq_token_ids.append(all_mask_pred_cands[i][j].item())
+            cand_sequence.append((seq_score, seq_token_ids))
+        cand_sequence = sorted(cand_sequence, key=lambda x: x[0])
+        topk_pred_ids = cand_sequence[:topk]
+        topk_pred_ids = [pred[1] for pred in topk_pred_ids]
+        topk_pred_words = [
+            self.tokenizer.convert_ids_to_tokens(pred_ids)
+            for pred_ids in topk_pred_ids
+        ]
+        selected_words = random.choice(topk_pred_words)
+
+        mask_idx = 0
+        ignored_idxs = []
+        for idx, word in enumerate(augmented_tokens):
+            if word == self.tokenizer.mask_token:
+                if selected_words[mask_idx] is not None:
+                    augmented_tokens[idx] = selected_words[mask_idx]
+                    mask_idx += 1
+                    if mask_idx == len(selected_words):
+                        break
+                else:
+                    ignored_idxs.append(idx)
+                    augmented_tokens[idx] = None
+        augmented_tokens = [token for token in augmented_tokens if token is not None]
+        return augmented_tokens, ignored_idxs
+
+    def find_candidate_idxs_for_add(self, tagged_sequence):
+        candidate_idxs = []
+        for idx, (token, label) in enumerate(tagged_sequence):
+            if (
+                (idx == 0 and label == "O") or
+                (idx > 0 and label == "O" and tagged_sequence[idx - 1][1] == "O")
+            ):
+                candidate_idxs.append(idx)
+        return candidate_idxs
+
+    def add_lm_token(self, tagged_sequence):
+        """Only add between two O tokens."""
+
+        candidate_idxs = self.find_candidate_idxs_for_add(tagged_sequence)
+        if not candidate_idxs:
+            return []
+
+        selected_idx = random.choice(candidate_idxs)
+        augmented_tokens = []
+        augmented_labels = []
+
+        idx = 0
+        while idx < len(tagged_sequence):
+            if idx == selected_idx:
+                augmented_tokens.extend([self.tokenizer.mask_token, tagged_sequence[idx][0]])
+                augmented_labels.extend(["O", tagged_sequence[idx][1]])
+            else:
+                augmented_tokens.append(tagged_sequence[idx][0])
+                augmented_labels.append(tagged_sequence[idx][1])
+            idx += 1
+        
+        augmented_tokens, ignored_idxs = self.replace_mask_token(
+            augmented_tokens, topk=3, should_exclude=True)
+        augmented_labels = [
+            label for idx, label in enumerate(augmented_labels) if idx not in ignored_idxs
+        ]
+        return [{
+            "tagged_sequence": list(zip(augmented_tokens, augmented_labels)),
+            "variant": "add_lm_token"
+        }]
+
+    def find_candidate_idxs_for_replace(self, tagged_sequence):
+        candidate_idxs = []
+        for idx, (token, label) in enumerate(tagged_sequence):
+            should_be_candidate = False
+            if (
+                idx == 0 and
+                len(tagged_sequence) > 0 and
+                label == "O" and
+                tagged_sequence[idx + 1][1] == "O"
+            ):
+                should_be_candidate = True
+            elif (
+                idx == len(tagged_sequence) - 1 and
+                label == "O" and
+                tagged_sequence[idx - 1][1] == "O"
+            ):
+                should_be_candidate = True
+            elif (
+                label == "O"
+                and tagged_sequence[idx - 1][1] == "O"
+                and tagged_sequence[idx + 1][1] == "O"
+            ):
+                should_be_candidate = True
+            if should_be_candidate is True:
+                candidate_idxs.append(idx)
+        return candidate_idxs
+
+    def replace_lm_token(self, tagged_sequence):
+        """Only replace token that sit between two O tokens."""
+
+        candidate_idxs = self.find_candidate_idxs_for_replace(tagged_sequence)
+        if not candidate_idxs:
+            return []
+
+        selected_idx = random.choice(candidate_idxs)
+        augmented_tokens = []
+        augmented_labels = []
+        masked_words = []
+        for idx, (token, label) in enumerate(tagged_sequence):
+            if idx == selected_idx:
+                masked_words.append(token)
+                augmented_tokens.append(self.tokenizer.mask_token)
+                augmented_labels.append("O")
+            else:
+                augmented_tokens.append(token)
+                augmented_labels.append(label)
+        
+        augmented_tokens, ignored_idxs = self.replace_mask_token(
+            augmented_tokens, topk=3, masked_words=masked_words, force_replace=True, should_exclude=True)
+        augmented_labels = [
+            label for idx, label in enumerate(augmented_labels) if idx not in ignored_idxs
+        ]
+        return [{
+            "tagged_sequence": list(zip(augmented_tokens, augmented_labels)),
+            "variant": "replace_lm_token"
+        }]
+
+    def do_entity_replace(self, tagged_sequence, entity_idxs):
+        tagged_sequence = copy.deepcopy(tagged_sequence)
+        max_num_mask = min(len(entity_idxs), 1)
+        ns_mask = list(range(1, max_num_mask + 1))
+        n_mask = random.choice(ns_mask)
+        mask_idxs = random.sample(entity_idxs, n_mask)
+        augmented_tokens = [token for token, label in tagged_sequence]
+        masked_words = []
+        for idx in mask_idxs:
+            masked_words.append(augmented_tokens[idx])
+            augmented_tokens[idx] = self.tokenizer.mask_token
+        augmented_tokens, ignored_idxs = self.replace_mask_token(
+            augmented_tokens, topk=3, masked_words=masked_words, force_replace=True)
+        if len(augmented_tokens) == 0:
+            return []
+
+        augmented_labels = [
+            label for idx, (token, label) in enumerate(tagged_sequence) if idx not in ignored_idxs
+        ]
+        return [{
+            "tagged_sequence": list(zip(augmented_tokens, augmented_labels)),
+            "variant": "replace_entity"
+        }]
+
+    def replace_entity(self, tagged_sequence):
+        entities = []
+        idx = 0
+        while idx < len(tagged_sequence):
+            token, label = tagged_sequence[idx]
+            assert label.startswith("I-") is False
+            if label == "O":
+                idx += 1
+            else: # starts with "B-"
+                entity_name = label[2:]
+                entity_idxs = [idx]
+                idx += 1
+                while tagged_sequence[idx][1] == "I-{}".format(entity_name):
+                    entity_idxs.append(idx)
+                    idx += 1
+                    if idx == len(tagged_sequence):
+                        break
+                entities.append({"entity_name": entity_name, "idxs": entity_idxs})
+
+        entities = [
+            entity for entity in entities
+            if entity["entity_name"] in {"scene", "device", "location"}
+        ]
+        if not entities:
+            return []
+
+        augmentations = []
+        for selected_entity in entities:
+            augmentations.extend(self.do_entity_replace(tagged_sequence, selected_entity["idxs"]))
+        return augmentations
+
+    def token_swap(self, tagged_sequence):
+        """Swap two O tokens that sit among an array of O tokens."""
+
+        tagged_sequence = copy.deepcopy(tagged_sequence)
+        O_arrays = []
+        idx = 0
+        while idx < len(tagged_sequence):
+            token, label = tagged_sequence[idx]
+            if label == "O":
+                O_idxs = []
+                while label == "O":
+                    O_idxs.append(idx)
+                    idx += 1
+                    if idx == len(tagged_sequence):
+                        break
+                    token, label = tagged_sequence[idx]
+                O_arrays.append(O_idxs)
+            idx += 1
+        
+        cands_O_idxs = []
+        for O_idxs in O_arrays:
+            start_idx = O_idxs[0]
+            if start_idx != 0:
+                this_start_idx = 1
+            else:
+                this_start_idx = 0
+            end_idx = O_idxs[-1]
+            if end_idx != len(tagged_sequence) - 1:
+                this_end_idx = -1
+            else:
+                this_end_idx = len(O_idxs)
+            cands_O_idxs.append(O_idxs[this_start_idx : this_end_idx])
+        cands_O_idxs = [O_idxs for O_idxs in cands_O_idxs if len(O_idxs) > 1]
+
+        if not cands_O_idxs:
+            return []
+
+        selected_O_idxs = random.choice(cands_O_idxs)
+        idx1, idx2 = random.sample(selected_O_idxs, 2)
+
+        # swap
+        tmp = tagged_sequence[idx1]
+        tagged_sequence[idx1] = tagged_sequence[idx2]
+        tagged_sequence[idx2] = tmp
+
+        return [{
+            "tagged_sequence": tagged_sequence,
+            "variant": "token_swap"
+        }]
+
+    def add_noise_word(self, tagged_sequence):
+        """Only add between two O tokens."""
+
+        candidate_idxs = self.find_candidate_idxs_for_add(tagged_sequence)
+        if not candidate_idxs:
+            return []
+
+        tagged_sequence = copy.deepcopy(tagged_sequence)
+        selected_idx = random.choice(candidate_idxs)
+
+        augmented_tokens = []
+        augmented_labels = []
+
+        num_try = 0
+        max_tries = 10
+        while num_try < max_tries:
+            noise_word = random.choice(self.avail_words)
+            if noise_word not in self.exclude_words:
+                break
+            num_try += 1
+        if num_try == max_tries:
+            return []
+
+        idx = 0
+        while idx < len(tagged_sequence):
+            if idx == selected_idx:
+                augmented_tokens.extend([noise_word, tagged_sequence[idx][0]])
+                augmented_labels.extend(["O", tagged_sequence[idx][1]])
+            else:
+                augmented_tokens.append(tagged_sequence[idx][0])
+                augmented_labels.append(tagged_sequence[idx][1])
+            idx += 1
+
+        return [{
+            "tagged_sequence": list(zip(augmented_tokens, augmented_labels)),
+            "variant": "add_noise_word"
+        }]
+
+    def replace_by_noise_word(self, tagged_sequence):
+        """Only replace token that sit between two O tokens."""
+
+        candidate_idxs = self.find_candidate_idxs_for_replace(tagged_sequence)
+        if not candidate_idxs:
+            return []
+
+        tagged_sequence = copy.deepcopy(tagged_sequence)
+        selected_idx = random.choice(candidate_idxs)
+        word_for_replace = tagged_sequence[selected_idx][0]
+        num_try = 0
+        max_tries = 10
+        while num_try < max_tries:
+            noise_word = random.choice(self.avail_words)
+            if noise_word != word_for_replace and noise_word not in self.exclude_words:
+                tagged_sequence[selected_idx] = (noise_word, tagged_sequence[selected_idx][1])
+                break
+            num_try += 1
+        if num_try == max_tries:
+            return []
+
+        return [{
+            "tagged_sequence": tagged_sequence,
+            "variant": "replace_by_noise_word"
+        }]
+
+def main():
+    vietnamese_words = []
+    with open(VIETNAMESE_WORDS_PATH, "r") as reader:
+        for line in reader:
+            line = line.strip()
+            if line:
+                vietnamese_words.append(line)
+    
+    trie = Trie()
+    for word in vietnamese_words:
+        trie.add(word)
+
+    setup_random(RANDOM_SEED)
+    diversifier = Diversifier(trie, type="bert")
+
+    data = load_data()
+    diversifier.diversify(data)
+
+
+if __name__ == "__main__":
+    main()

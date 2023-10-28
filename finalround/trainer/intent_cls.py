@@ -12,7 +12,7 @@ from collections import defaultdict
 from finalround.configuration.intent_cls import IntentClassifierConfig
 from finalround.tokenization.resolver import resolve_tokenizer
 from finalround.modeling.intent_cls_resolver import resolve_intent_cls_model
-from finalround.dataloader.intent_group_dataloader import (
+from finalround.data_helpers.dataloader.intent_group_dataloader import (
     IntentGroupDataloader,
     create_eval_dataloader
 )

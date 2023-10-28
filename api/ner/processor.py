@@ -226,14 +226,16 @@ class NERProcessor(object):
         architecture = "bert" if "bert" in self.args.model_type else "roberta"
         input_text = text
         input_text = " ".join(basic_tokenizer.tokenize(input_text))
+        segmented_text = None
         if self.segmenter:
             input_text = self.segment(text)
+            segmented_text = input_text
         if self.args.lower:
             input_text = input_text.lower()
-        return input_text, architecture
+        return input_text, architecture, segmented_text
 
     def extract(self, text):
-        input_text, architecture = self.pre_extract(text)
+        input_text, architecture, segmented_text = self.pre_extract(text)
         tokens, labels = self.get_prediction(input_text)
         entities = extract_entities(input_text, tokens, labels, architecture)
         entities = self.post_extract(input_text, entities)

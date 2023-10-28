@@ -63,15 +63,15 @@ def main():
             idx = end_idx
         if end_idx < len(annotation):
             words.extend([(word, "O") for word in annotation[end_idx:].split()])
-        annotated_data.append(separate_punctuation(words))
+        annotated_data.append((item["file"], separate_punctuation(words)))
 
     output_dir = os.path.dirname(args.output_path)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     with open(args.output_path, "w") as writer:
-        for item in tqdm(annotated_data, desc="Write"):
+        for file_id, item in tqdm(annotated_data, desc="Write"):
             tokens, labels = zip(*item)
-            writer.write(json.dumps({"tokens": tokens, "labels": labels}, ensure_ascii=False) + "\n")
+            writer.write(json.dumps({"file": file_id, "tokens": tokens, "labels": labels}, ensure_ascii=False) + "\n")
 
 
 if __name__ == "__main__":

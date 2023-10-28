@@ -57,7 +57,7 @@ def load_model(model_type: Text, model_path: Text):
             num_labels=len(label_mappings),
             add_pooling_layer=config.add_pooling_layer
         )
-    elif model_type == "roberta":
+    elif model_type == "roberta_cont":
         config = NERContConfig(**training_config)
         with open(os.path.join(model_path, "label_mappings.json"), "r") as reader:
             label_mappings = json.load(reader)

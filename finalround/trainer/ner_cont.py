@@ -18,7 +18,7 @@ from seqeval.metrics import (
 from finalround.configuration.ner_cont import NERContConfig
 from finalround.tokenization.resolver import resolve_tokenizer
 from finalround.modeling.ner_resolver import resolve_ner_cont_model
-from finalround.dataloader.ner_cont_dataloader import (
+from finalround.data_helpers.dataloader.ner_cont_dataloader import (
     NERContDataloader, NERSequenceDataloader
 )
 from finalround.optimization import create_optimizer_and_scheduler
