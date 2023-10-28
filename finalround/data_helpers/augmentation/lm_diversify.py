@@ -90,24 +90,46 @@ class Diversifier:
         with open(TRACKING_FILE) as reader:
             tracker = json.load(reader)
         running_idx = tracker["running_idx"]
+        existed_data = []
+        with open(OUTPUT_PATH, "r") as reader:
+            for line in reader:
+                existed_data.append(json.loads(line.strip()))
+        file_id_tracker = set()
+        existed_file_ids = []
+        for item in existed_data:
+            if item["file"] not in file_id_tracker:
+                file_id_tracker.add(item["file"])
+                existed_file_ids.append(item["file"])
+        existed_file_ids = existed_file_ids[:running_idx]
+        existed_file_id_tracker = set(existed_file_ids)
+        rewritten_existed_data = []
+        for item in existed_data:
+            if item["file"] in existed_file_id_tracker:
+                rewritten_existed_data.append(item)
+        with open(OUTPUT_PATH, "w") as writer:
+            for item in rewritten_existed_data:
+                writer.write(json.dumps(item, ensure_ascii=False) + "\n")
+
         with open(OUTPUT_PATH, "a") as writer:
             for idx, item in enumerate(tqdm(data)):
                 if idx < running_idx:
                     continue
-                iteration_variants = None
                 try:
                     tagged_sequence = list(zip(item["tokens"], item["labels"]))
                     variants = self.text_diversify(tagged_sequence)
                     for idx, variant in enumerate(variants):
                         variants[idx] = {"file": item["file"], **variant}
-                    iteration_variants = variants
-                except Exception as e:
-                    with open(TRACKING_FILE, "w") as writer:
-                        json.dump({"running_idx": idx})
-                    logger.error(e)
-                else:
-                    for variant in iteration_variants:
+                    for variant in variants:
                         writer.write(json.dumps(variant, ensure_ascii=False) + "\n")
+                except KeyboardInterrupt as e:
+                    with open(TRACKING_FILE, "w") as tracking_writer:
+                        json.dump({"running_idx": idx}, tracking_writer)
+                    logger.error(e)
+                    exit(0)
+                except Exception as e:
+                    with open(TRACKING_FILE, "w") as tracking_writer:
+                        json.dump({"running_idx": idx}, tracking_writer)
+                    logger.error(e)
 
     def text_diversify(self, tagged_sequence):
         added_token_variant = self.add_lm_token(tagged_sequence)
