@@ -198,8 +198,10 @@ class CompositeEntityGenerator:
         if entity["entity_name"] == "device":
             variants.extend(self.add_owner(entity))
             variants.extend(self.add_quantity(entity))
+            variants.extend(self.add_side(entity))
         elif entity["entity_name"] == "location":
             variants.extend(self.add_owner(entity))
+            variants.extend(self.add_side(entity))
         elif entity["entity_name"] == "scene":
             variants.extend(self.scene_diversify(entity))
         return variants
@@ -257,6 +259,36 @@ class CompositeEntityGenerator:
                         "variant": "add_quantity"
                     }]
         return []
+
+    def add_side(self, entity):
+        assert entity["entity_name"] in {"device", "location"}
+        flip_coin = random.random()
+        fill_mask_template = "{entity} bên {mask_token}".format(
+            entity=entity["entity_value"],
+            mask_token=self.tokenizer.mask_token
+        )
+        if flip_coin < 0.5:
+            owner = self.lm_fill_mask(fill_mask_template, topk=3)[0]
+        else:
+            owner = random.choice(self.avail_owner)
+        tagged_sequence = copy.deepcopy(self.tagged_sequence)
+        idxs = entity["idxs"]
+        entity_sequence = tagged_sequence[idxs[0] : idxs[-1] + 1]
+        entity_sequence.extend([
+            ("bên", "I-{}".format(entity["entity_name"])),
+            (owner, "I-{}".format(entity["entity_name"]))
+        ])
+        tagged_sequence = [
+            *tagged_sequence[:idxs[0]],
+            *entity_sequence,
+            *tagged_sequence[idxs[-1] + 1:]
+        ]
+        return [
+            {
+                "tagged_sequence": tagged_sequence,
+                "variant": "add_owner"
+            }
+        ]
 
     def scene_diversify(self, entity):
         assert entity["entity_name"] == "scene"
