@@ -69,22 +69,36 @@ def get_all_idxs_sequence(*dims):
 
 
 class Diversifier:
-    def __init__(self, trie: Trie, type: Text = "bert4news"):
+    def __init__(self, trie: Trie, vietnamese_words, type: Text = "bert4news"):
         if type == "bert4news":
             tokenizer, model = load_bert4news()
         else:
             tokenizer, model = load_phobert()
+        self.vietnamese_words = vietnamese_words
         self.tokenizer = tokenizer
         self.model = model
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         self.model.to(self.device)
         self.trie = trie
-        self.avail_words = self.trie.get_entities()
+        self.avail_words = [
+            word for word in self.tokenizer.vocab if self.trie.exists(word)
+        ]
         self.exclude_words = [
             "tăng", "giảm", "kiểm", "tra", "bật", "mở", "đóng", "tắt",
             "tiệc", "tắm", "phòng", "sân", "hiên", "vườn", "thang",
-            "riêng", "tư", "sảnh", "giặt", "bếp", "đèn", "giãn"
+            "riêng", "tư", "sảnh", "giặt", "bếp", "đèn", "giãn",
+            "nóng", "lạnh", "nâng", "check", "chạy", "ấm", "mát",
+            "cửa", "giường", "nhà", "sưởi", "quạt"
         ]
+        self.avail_words_exclusive = [
+            word for word in self.avail_words if word not in self.exclude_words
+        ]
+        vocab_mask = [False] * tokenizer.vocab_size
+        for word in vietnamese_words:
+            if word in tokenizer.vocab:
+                vocab_mask[tokenizer.vocab[word]] = True
+        vocab_mask = (1 - torch.tensor(vocab_mask).to(torch.long)).to(torch.bool)
+        self.vocab_mask = vocab_mask
 
     def diversify(self, data):
         with open(TRACKING_FILE) as reader:
@@ -130,6 +144,10 @@ class Diversifier:
                     with open(TRACKING_FILE, "w") as tracking_writer:
                         json.dump({"running_idx": idx}, tracking_writer)
                     logger.error(e)
+                    exit(0)
+        
+        with open(TRACKING_FILE, "w") as writer:
+            json.dump({"running_idx": idx}, writer)
 
     def text_diversify(self, tagged_sequence):
         added_token_variant = self.add_lm_token(tagged_sequence)
@@ -175,6 +193,7 @@ class Diversifier:
         logits = outputs.logits.squeeze() # [seq_len, vocab_size]
         log_probs = F.log_softmax(logits, dim=-1)
         active_mask = input_ids.squeeze().eq(self.tokenizer.mask_token_id) # [seq_len]
+
         if force_replace:
             mask_idxs = active_mask.nonzero().squeeze(dim=-1).tolist()
             mask_idxs = [(i, idx) for i, idx in enumerate(mask_idxs)]
@@ -184,14 +203,22 @@ class Diversifier:
                 log_probs[selected_mask_idx, masked_id] = -1e20
             except Exception as e:
                 logger.error(e)
-        
+
+        exclude_mask = None
         if should_exclude:
+            exclude_mask = []
             for word in self.exclude_words:
-                try:
-                    masked_id = self.tokenizer.convert_tokens_to_ids([word])[0]
-                    log_probs[:, masked_id] = -1e20
-                except Exception as e:
-                    logger.error(e)
+                if word in self.tokenizer.vocab:
+                    exclude_mask.append(self.tokenizer.vocab[word])
+            if exclude_mask:
+                exclude_mask = torch.tensor(exclude_mask)
+            else:
+                exclude_mask = None
+
+        this_vocab_mask = self.vocab_mask.clone()
+        if exclude_mask is not None:
+            this_vocab_mask[exclude_mask] = True
+        log_probs[:, this_vocab_mask] = -1e20
 
         scores, vocab_indices = torch.topk(log_probs, topk, dim=-1) # [seq_len, topk]
         all_mask_pred_cands = vocab_indices[active_mask] # [num_mask, topk]
@@ -205,7 +232,7 @@ class Diversifier:
                 seq_score += all_mask_scores[i][j].item()
                 seq_token_ids.append(all_mask_pred_cands[i][j].item())
             cand_sequence.append((seq_score, seq_token_ids))
-        cand_sequence = sorted(cand_sequence, key=lambda x: x[0])
+        cand_sequence = sorted(cand_sequence, key=lambda x: x[0], reverse=True)
         topk_pred_ids = cand_sequence[:topk]
         topk_pred_ids = [pred[1] for pred in topk_pred_ids]
         topk_pred_words = [
@@ -363,12 +390,15 @@ class Diversifier:
                 entity_name = label[2:]
                 entity_idxs = [idx]
                 idx += 1
-                while tagged_sequence[idx][1] == "I-{}".format(entity_name):
-                    entity_idxs.append(idx)
-                    idx += 1
-                    if idx == len(tagged_sequence):
-                        break
-                entities.append({"entity_name": entity_name, "idxs": entity_idxs})
+                if idx == len(tagged_sequence):
+                    entities.append({"entity_name": entity_name, "idxs": entity_idxs})
+                else:
+                    while tagged_sequence[idx][1] == "I-{}".format(entity_name):
+                        entity_idxs.append(idx)
+                        idx += 1
+                        if idx == len(tagged_sequence):
+                            break
+                    entities.append({"entity_name": entity_name, "idxs": entity_idxs})
 
         entities = [
             entity for entity in entities
@@ -445,16 +475,7 @@ class Diversifier:
         augmented_tokens = []
         augmented_labels = []
 
-        num_try = 0
-        max_tries = 10
-        while num_try < max_tries:
-            noise_word = random.choice(self.avail_words)
-            if noise_word not in self.exclude_words:
-                break
-            num_try += 1
-        if num_try == max_tries:
-            return []
-
+        noise_word = random.choice(self.avail_words_exclusive)
         idx = 0
         while idx < len(tagged_sequence):
             if idx == selected_idx:
@@ -483,8 +504,8 @@ class Diversifier:
         num_try = 0
         max_tries = 10
         while num_try < max_tries:
-            noise_word = random.choice(self.avail_words)
-            if noise_word != word_for_replace and noise_word not in self.exclude_words:
+            noise_word = random.choice(self.avail_words_exclusive)
+            if noise_word != word_for_replace:
                 tagged_sequence[selected_idx] = (noise_word, tagged_sequence[selected_idx][1])
                 break
             num_try += 1
@@ -509,7 +530,7 @@ def main():
         trie.add(word)
 
     setup_random(RANDOM_SEED)
-    diversifier = Diversifier(trie, type="bert")
+    diversifier = Diversifier(trie, vietnamese_words, type="bert4news")
 
     data = load_data()
     diversifier.diversify(data)

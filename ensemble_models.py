@@ -122,8 +122,8 @@ def main():
         out_item["file"] = item["file_name"]
         ensemble_input = []
         for processor in processors:
-            text, architecture = processor.pre_extract(item["norm"])
-            ensemble_input.append(processor.get_prediction(text))
+            punc_separated_text, architecture, input_text = processor.pre_extract(item["norm"])
+            ensemble_input.append(processor.get_prediction(punc_separated_text))
         
         votes = []
         for _ in range(len(ensemble_input[0][0])):
@@ -136,8 +136,8 @@ def main():
             counter = Counter(vote)
             sorted_counter = sorted(list(counter.items()), key=lambda x: x[1], reverse=True)
             ensemble_labels.append(sorted_counter[0][0])
-        entities = extract_entities(text, tokens, ensemble_labels, architecture)
-        entities = processors[0].post_extract(text, entities)
+        entities = extract_entities(input_text, tokens, ensemble_labels, architecture)
+        entities = processors[0].post_extract(input_text, entities)
 
         out_entities = []
         for entity in entities:
