@@ -1,3 +1,4 @@
+import os
 import time
 import copy
 import json
@@ -28,16 +29,12 @@ basic_tokenizer = BasicTokenizer(
 from finalround.utils.vietnamese_words.trie import Trie
 from utils.utils import setup_random
 
-RANDOM_SEED = 12345
 VIETNAMESE_WORDS_PATH = "finalround/utils/vietnamese_words/assets/words.txt"
-DATA_PATH = "final/data/ner/all.jsonl"
-OUTPUT_PATH = "onboard/data/ner/lm_augmented/all_lm_augmented.jsonl"
-TRACKING_FILE = "onboard/data/ner/lm_augmented/tracker.json"
 
 
-def load_data():
+def load_data(data_path):
     data = []
-    with open(DATA_PATH, "r") as reader:
+    with open(data_path, "r") as reader:
         for line in reader:
             data.append(json.loads(line.strip()))
     return data
@@ -100,14 +97,31 @@ class Diversifier:
         vocab_mask = (1 - torch.tensor(vocab_mask).to(torch.long)).to(torch.bool)
         self.vocab_mask = vocab_mask
 
-    def diversify(self, data):
-        with open(TRACKING_FILE) as reader:
-            tracker = json.load(reader)
-        running_idx = tracker["running_idx"]
+    def diversify(self, data, tracking_file, output_path):
+        # setup tracking file
+        if os.path.exists(tracking_file):
+            with open(tracking_file) as reader:
+                tracker = json.load(reader)
+        else:
+            tracking_file_dir = os.path.dirname(tracking_file)
+            if not os.path.exists(tracking_file_dir):
+                os.makedirs(tracking_file_dir)
+            tracker = {}
+        running_idx = tracker.get("running_idx", 0)
+
+        # check for existed data
         existed_data = []
-        with open(OUTPUT_PATH, "r") as reader:
-            for line in reader:
-                existed_data.append(json.loads(line.strip()))
+        if os.path.exists(output_path):
+            with open(output_path, "r") as reader:
+                for line in reader:
+                    existed_data.append(json.loads(line.strip()))
+        else:
+            output_dir = os.path.dirname(output_path)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            existed_data = []
+
+        # rewrite existed file for consistency
         file_id_tracker = set()
         existed_file_ids = []
         for item in existed_data:
@@ -120,34 +134,35 @@ class Diversifier:
         for item in existed_data:
             if item["file"] in existed_file_id_tracker:
                 rewritten_existed_data.append(item)
-        with open(OUTPUT_PATH, "w") as writer:
+        with open(output_path, "w") as writer:
             for item in rewritten_existed_data:
                 writer.write(json.dumps(item, ensure_ascii=False) + "\n")
 
-        with open(OUTPUT_PATH, "a") as writer:
+        # loop for creating augmentations
+        with open(output_path, "a") as writer:
             for idx, item in enumerate(tqdm(data)):
                 if idx < running_idx:
                     continue
                 try:
                     tagged_sequence = list(zip(item["tokens"], item["labels"]))
                     variants = self.text_diversify(tagged_sequence)
-                    for idx, variant in enumerate(variants):
-                        variants[idx] = {"file": item["file"], **variant}
+                    for _idx, variant in enumerate(variants):
+                        variants[_idx] = {"file": item["file"], **variant}
                     for variant in variants:
                         writer.write(json.dumps(variant, ensure_ascii=False) + "\n")
                 except KeyboardInterrupt as e:
-                    with open(TRACKING_FILE, "w") as tracking_writer:
+                    with open(tracking_file, "w") as tracking_writer:
                         json.dump({"running_idx": idx}, tracking_writer)
                     logger.error(e)
                     exit(0)
                 except Exception as e:
-                    with open(TRACKING_FILE, "w") as tracking_writer:
+                    with open(tracking_file, "w") as tracking_writer:
                         json.dump({"running_idx": idx}, tracking_writer)
                     logger.error(e)
                     exit(0)
         
-        with open(TRACKING_FILE, "w") as writer:
-            json.dump({"running_idx": idx}, writer)
+        with open(tracking_file, "w") as writer:
+            json.dump({"running_idx": idx + 1}, writer)
 
     def text_diversify(self, tagged_sequence):
         added_token_variant = self.add_lm_token(tagged_sequence)
@@ -518,6 +533,13 @@ class Diversifier:
         }]
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_path", default="data/ner/all.jsonl")
+    parser.add_argument("--tracking_file", default="data/ner/augmented/lm/tracking.json")
+    parser.add_argument("--output_path", default="data/ner/augmented/lm/lm_augmented.jsonl")
+    parser.add_argument("--seed", type=int, default=12345)
+    args = parser.parse_args()
+
     vietnamese_words = []
     with open(VIETNAMESE_WORDS_PATH, "r") as reader:
         for line in reader:
@@ -529,11 +551,11 @@ def main():
     for word in vietnamese_words:
         trie.add(word)
 
-    setup_random(RANDOM_SEED)
+    setup_random(args.seed)
     diversifier = Diversifier(trie, vietnamese_words, type="bert4news")
 
-    data = load_data()
-    diversifier.diversify(data)
+    data = load_data(args.data_path)
+    diversifier.diversify(data, tracking_file=args.tracking_file, output_path=args.output_path)
 
 
 if __name__ == "__main__":

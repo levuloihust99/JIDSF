@@ -1,7 +1,7 @@
 {
     "ner-hackathon-2023": {
-        "all": "data/ner/all.jsonl",
-        "train_indices": "data/ner/train_indices.json",
-        "dev_indices": "data/ner/dev_indices.json"
+        "all": "data/ner/augmented/all_augmented.jsonl",
+        "train_indices": "data/ner/augmented/split/train_indices.json",
+        "dev_indices": "data/ner/augmented/split/dev_indices.json"
     }
 }

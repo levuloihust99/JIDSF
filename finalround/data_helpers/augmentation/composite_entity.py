@@ -1,9 +1,11 @@
+import os
 import re
 import copy
 import json
 import torch
 import random
 import logging
+import argparse
 import torch.nn.functional as F
 
 from tqdm import tqdm
@@ -31,16 +33,9 @@ for word in vietnamese_words:
     trie.add(word)
 
 
-RANDOM_SEED = 12345
-VIETNAMESE_WORDS_PATH = "finalround/utils/vietnamese_words/assets/words.txt"
-DATA_PATH = "final/data/ner/all.jsonl"
-OUTPUT_PATH = "onboard/data/ner/entity_composite/all_composite_entity.jsonl"
-TRACKING_FILE = "onboard/data/ner/entity_composite/tracker_entity_composite.json"
-
-
-def load_data():
+def load_data(data_path):
     data = []
-    with open(DATA_PATH, "r") as reader:
+    with open(data_path, "r") as reader:
         for line in reader:
             data.append(json.loads(line.strip()))
     return data
@@ -125,14 +120,31 @@ class CompositeEntityGenerator:
         self.vocab_mask = vocab_mask
         self.exclude_words = []
 
-    def augment(self, data):
-        with open(TRACKING_FILE) as reader:
-            tracker = json.load(reader)
-        running_idx = tracker["running_idx"]
+    def augment(self, data, tracking_file, output_path):
+        # setup tracking file
+        if os.path.exists(tracking_file):
+            with open(tracking_file) as reader:
+                tracker = json.load(reader)
+        else:
+            tracking_file_dir = os.path.dirname(tracking_file)
+            if not os.path.exists(tracking_file_dir):
+                os.makedirs(tracking_file_dir)
+            tracker = {}
+        running_idx = tracker.get("running_idx", 0)
+
+        # check for existed data
         existed_data = []
-        with open(OUTPUT_PATH, "r") as reader:
-            for line in reader:
-                existed_data.append(json.loads(line.strip()))
+        if os.path.exists(output_path):
+            with open(output_path, "r") as reader:
+                for line in reader:
+                    existed_data.append(json.loads(line.strip()))
+        else:
+            output_dir = os.path.dirname(output_path)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            existed_data = []
+
+        # rewrite existed file for consistency
         file_id_tracker = set()
         existed_file_ids = []
         for item in existed_data:
@@ -145,11 +157,12 @@ class CompositeEntityGenerator:
         for item in existed_data:
             if item["file"] in existed_file_id_tracker:
                 rewritten_existed_data.append(item)
-        with open(OUTPUT_PATH, "w") as writer:
+        with open(output_path, "w") as writer:
             for item in rewritten_existed_data:
                 writer.write(json.dumps(item, ensure_ascii=False) + "\n")
 
-        with open(OUTPUT_PATH, "a") as writer:
+        # start loop for creating augmentations
+        with open(output_path, "a") as writer:
             for idx, item in enumerate(tqdm(data)):
                 if idx < running_idx:
                     continue
@@ -165,12 +178,12 @@ class CompositeEntityGenerator:
                     for augmentation in augmentations:
                         writer.write(json.dumps(augmentation, ensure_ascii=False) + "\n")
                 except KeyboardInterrupt as e:
-                    with open(TRACKING_FILE, "w") as tracking_writer:
+                    with open(tracking_file, "w") as tracking_writer:
                         json.dump({"running_idx": idx}, tracking_writer)
                     logger.error(e)
                     exit(0)
                 except Exception as e:
-                    with open(TRACKING_FILE, "w") as tracking_writer:
+                    with open(tracking_file, "w") as tracking_writer:
                         json.dump({"running_idx": idx}, tracking_writer)
                     logger.error(e)
                     exit(0)
@@ -385,10 +398,17 @@ class CompositeEntityGenerator:
         return seq_tokens
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_path", default="data/ner/all.jsonl")
+    parser.add_argument("--tracking_file", default="data/ner/augmented/entity_composite/tracking.json")
+    parser.add_argument("--output_path", default="data/ner/augmented/entity_composite/entity_composite.jsonl")
+    parser.add_argument("--seed", type=int, default=12345)
+    args = parser.parse_args()
+
     augmenter = CompositeEntityGenerator()
-    data = load_data()
-    setup_random(RANDOM_SEED)
-    augmenter.augment(data)
+    data = load_data(args.data_path)
+    setup_random(args.seed)
+    augmenter.augment(data, tracking_file=args.tracking_file, output_path=args.output_path)
 
 
 if __name__ == "__main__":
