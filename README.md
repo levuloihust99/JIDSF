@@ -133,6 +133,7 @@ python train_ner.py \
     ]
 }
 </pre>
+* All the above files are available at [HERE](https://drive.google.com/drive/folders/1qmUT92loiUcjbAZA4ACLDWRCECDRCmeG?usp=drive_link)
 
 ## Step 1. Infer NER
 ```shell

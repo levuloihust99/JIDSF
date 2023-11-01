@@ -1,6 +1,6 @@
 {
     "model_type": "bert",
     "models": [
-        "checkpoints/ner-hackathon-2023/vibert4news-base-cased/Q0JNCHRAN7RGZBZB/checkpoint-BertPosTagger-5e-05-0.994814"
+        "checkpoints/ner/checkpoint-BertPosTagger-5e-05-0.998212"
     ]
 }
