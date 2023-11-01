@@ -105,12 +105,13 @@ class CompositeEntityGenerator:
         self.avail_owner = [
             "quân", "nam", "my", "trung", "hùng", "dũng", "lan", "thuỷ",
             "nguyên", "lâm", "trang", "linh", "sơn", "mạnh", "quyền", "quyết",
-            "vượng", "ông bà", "bố mẹ", "long", "chiến", "tú"
+            "vượng", "ông bà", "bố mẹ", "long", "chiến", "tú", "vy", "duy anh",
+            "bạn quân", "bạn nam", "bạn trường", "bố bạn linh", "mẹ bạn hải"
         ]
         self.avail_side = [
-            "phải", "trái", "trên", "dưới", "trong", "ngoài", "cạnh", "kia", "này",
+            "phải", "trái", "trên", "dưới", "kia", "này",
             "tả", "hữu", "đông", "tây", "nam", "bắc", "tây nam", "đông nam", "tây bắc", "đông bắc",
-            "cạnh", "mạn phải", "mạn trái", "mạn trong", "mạn ngoài"
+            "mạn phải", "mạn trái"
         ]
         self.tokenizer = BertTokenizer.from_pretrained("NlpHUST/vibert4news-base-cased")
         self.model = BertForMaskedLM.from_pretrained("NlpHUST/vibert4news-base-cased")
@@ -268,9 +269,11 @@ class CompositeEntityGenerator:
             mask_token=self.tokenizer.mask_token
         )
         if flip_coin < 0.5:
-            owner = self.lm_fill_mask(fill_mask_template, topk=3)[0]
+            owner = self.lm_fill_mask(fill_mask_template, topk=3, exclude_words=[
+                "trong", "ngoài", "cạnh", "mạn trong", "mạn ngoài"
+            ])[0]
         else:
-            owner = random.choice(self.avail_owner)
+            owner = random.choice(self.avail_side)
         tagged_sequence = copy.deepcopy(self.tagged_sequence)
         idxs = entity["idxs"]
         entity_sequence = tagged_sequence[idxs[0] : idxs[-1] + 1]
@@ -318,7 +321,9 @@ class CompositeEntityGenerator:
         masked_word = tokens[selected_idx_for_mask]
         tokens[selected_idx_for_mask] = self.tokenizer.mask_token
         fill_mask_template = " ".join(tokens)
-        pred_word = self.lm_fill_mask(fill_mask_template, topk=3, exclude_words=[masked_word])[0]
+        pred_word = self.lm_fill_mask(fill_mask_template, topk=1)[0]
+        if pred_word == masked_word:
+            return []
         tokens[selected_idx_for_mask] = pred_word
         labels = [item[1] for item in tagged_sequence]
         return [

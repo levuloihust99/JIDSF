@@ -244,9 +244,9 @@ def fix_filter_device(data):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--asr_result_path", default="onboard/asr_result/results_private_120000.json")
-    parser.add_argument("--inp_predict_path", default="onboard/submissions/submit3/predictions_raw.jsonl")
-    parser.add_argument("--out_predict_path", default="onboard/submissions/submit3/predictions.jsonl")
+    parser.add_argument("--asr_result_path", default="onboard/asr_result/results_private_180000.json")
+    parser.add_argument("--inp_predict_path", default="onboard/submissions/submit5/predictions_raw.jsonl")
+    parser.add_argument("--out_predict_path", default="onboard/submissions/submit5/predictions.jsonl")
     args = parser.parse_args()
 
     with open(args.asr_result_path, "r") as reader:
