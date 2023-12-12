@@ -111,6 +111,7 @@ def main():
     parser.add_argument("--segment", type=eval, default=False)
     parser.add_argument("--lower", default=False, action="store_true")
     parser.add_argument("--segment_endpoint", default="http://localhost:8088/segment")
+    parser.add_argument("--do_split", default=False, action="store_true")
     args = parser.parse_args()
 
     tokenizer = load_tokenizer(
@@ -134,7 +135,7 @@ def main():
         model=model,
         label_mappings=label_mappings,
         segmenter=word_segmenter,
-        args=args
+        args=args,
     )
 
     app.ctx.ner_processor = ner_processor
